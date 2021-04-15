@@ -69,7 +69,8 @@ class Database private constructor(private val resolvedVendor: String? = null, v
             "jdbc:mariadb" to "org.mariadb.jdbc.Driver",
             "jdbc:oracle" to "oracle.jdbc.OracleDriver",
             "jdbc:sqlite" to "org.sqlite.JDBC",
-            "jdbc:sqlserver" to "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+            "jdbc:sqlserver" to "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+            "jdbc:as400" to "com.ibm.as400.access.AS400JDBCDriver"
         )
         private val dialectMapping = mutableMapOf(
             "jdbc:h2" to H2Dialect.dialectName,
@@ -79,7 +80,8 @@ class Database private constructor(private val resolvedVendor: String? = null, v
             "jdbc:mariadb" to MariaDBDialect.dialectName,
             "jdbc:oracle" to OracleDialect.dialectName,
             "jdbc:sqlite" to SQLiteDialect.dialectName,
-            "jdbc:sqlserver" to SQLServerDialect.dialectName
+            "jdbc:sqlserver" to SQLServerDialect.dialectName,
+            "jdbc:as400" to DB2Dialect.dialectName
         )
 
         init {
@@ -91,6 +93,7 @@ class Database private constructor(private val resolvedVendor: String? = null, v
             registerDialect(OracleDialect.dialectName) { OracleDialect() }
             registerDialect(SQLServerDialect.dialectName) { SQLServerDialect() }
             registerDialect(MariaDBDialect.dialectName) { MariaDBDialect() }
+            registerDialect(DB2Dialect.dialectName){DB2Dialect()}
         }
 
         fun registerDialect(prefix:String, dialect: () -> DatabaseDialect) {

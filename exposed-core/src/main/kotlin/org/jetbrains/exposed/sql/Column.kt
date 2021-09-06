@@ -117,7 +117,7 @@ class Column<T>(
         }
 
         if (columnType.nullable || (defaultValue != null && defaultValueFun == null && !currentDialect.isAllowedAsColumnDefault(defaultValue))) {
-            append(" NULL")
+            append(" ${currentDialect.dataTypeProvider.nullableType()}")
         } else if (!isPKColumn || (currentDialect is SQLiteDialect && !isSQLiteAutoIncColumn)) {
             append(" NOT NULL")
         }

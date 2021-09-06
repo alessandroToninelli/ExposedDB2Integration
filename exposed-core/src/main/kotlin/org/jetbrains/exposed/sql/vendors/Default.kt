@@ -57,6 +57,7 @@ abstract class DataTypeProvider {
     open fun textType(): String = "TEXT"
 
     // Binary data types
+    open fun nullableType(): String = ""
 
     /** Binary type for storing binary strings of variable and _unlimited_ length. */
     abstract fun binaryType(): String

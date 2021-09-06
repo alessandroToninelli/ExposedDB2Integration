@@ -99,7 +99,7 @@ class Column<T>(
         }
 
         if (colType.nullable || (defaultValue != null && defaultValueFun == null && !currentDialect.isAllowedAsColumnDefault(defaultValue))) {
-//            append(" NULL")
+            append(" ${currentDialect.dataTypeProvider.nullableType()}")
         } else if (!isPKColumn || (currentDialect is SQLiteDialect && !colType.isAutoInc)) {
             append(" NOT NULL")
         }

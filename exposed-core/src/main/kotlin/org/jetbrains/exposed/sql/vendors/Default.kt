@@ -102,6 +102,10 @@ abstract class DataTypeProvider {
         currentDialect is SQLServerDialect -> "$e"
         else -> "($e)"
     }
+
+    open fun precessOrderByClause(queryBuilder: QueryBuilder, expression: Expression<*>, sortOrder: SortOrder) {
+        queryBuilder.append((expression as? ExpressionAlias<*>)?.alias ?: expression, " ", sortOrder.code)
+    }
 }
 
 /**
@@ -555,6 +559,8 @@ interface DatabaseDialect {
     val supportsSubqueryUnions: Boolean get() = false
 
     val supportsDualTableConcept: Boolean get() = false
+
+    val supportsOrderByNullsFirstLast: Boolean get() = false
 
     /** Returns the name of the current database. */
     fun getDatabase(): String

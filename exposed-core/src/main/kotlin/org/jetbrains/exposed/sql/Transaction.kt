@@ -1,5 +1,6 @@
 package org.jetbrains.exposed.sql
 
+import org.intellij.lang.annotations.Language
 import org.jetbrains.exposed.sql.statements.GlobalStatementInterceptor
 import org.jetbrains.exposed.sql.statements.Statement
 import org.jetbrains.exposed.sql.statements.StatementInterceptor
@@ -30,19 +31,9 @@ open class UserDataHolder {
 
 open class Transaction(private val transactionImpl: TransactionInterface) : UserDataHolder(), TransactionInterface by transactionImpl {
 
-    init {
-        Companion.globalInterceptors // init interceptors
-    }
-
-    internal val interceptors = arrayListOf<StatementInterceptor>()
-
-    fun registerInterceptor(interceptor: StatementInterceptor) = interceptors.add(interceptor)
-
-    fun unregisterInterceptor(interceptor: StatementInterceptor) = interceptors.remove(interceptor)
-
     var statementCount: Int = 0
     var duration: Long = 0
-    var warnLongQueriesDuration: Long? = null
+    var warnLongQueriesDuration: Long? = db.config.warnLongQueriesDuration
     var debug = false
     val id by lazy { UUID.randomUUID().toString() }
 
@@ -50,14 +41,21 @@ open class Transaction(private val transactionImpl: TransactionInterface) : User
     var currentStatement: PreparedStatementApi? = null
     internal val executedStatements: MutableList<PreparedStatementApi> = arrayListOf()
 
+    internal val interceptors = arrayListOf<StatementInterceptor>()
+
     val statements = StringBuilder()
 
     // prepare statement as key and count to execution time as value
-    val statementStats = hashMapOf<String, Pair<Int, Long>>()
+    val statementStats by lazy { hashMapOf<String, Pair<Int, Long>>() }
 
     init {
-        addLogger(Slf4jSqlDebugLogger)
+        addLogger(db.config.sqlLogger)
+        globalInterceptors // init interceptors
     }
+
+    fun registerInterceptor(interceptor: StatementInterceptor) = interceptors.add(interceptor)
+
+    fun unregisterInterceptor(interceptor: StatementInterceptor) = interceptors.remove(interceptor)
 
     override fun commit() {
         globalInterceptors.forEach { it.beforeCommit(this) }
@@ -79,11 +77,11 @@ open class Transaction(private val transactionImpl: TransactionInterface) : User
 
     private fun describeStatement(delta: Long, stmt: String): String = "[${delta}ms] ${stmt.take(1024)}\n\n"
 
-    fun exec(stmt: String, args: Iterable<Pair<IColumnType, Any?>> = emptyList(), explicitStatementType: StatementType? = null) =
+    fun exec(@Language("sql") stmt: String, args: Iterable<Pair<IColumnType, Any?>> = emptyList(), explicitStatementType: StatementType? = null) =
         exec(stmt, args, explicitStatementType) { }
 
     fun <T : Any> exec(
-        stmt: String,
+        @Language("sql") stmt: String,
         args: Iterable<Pair<IColumnType, Any?>> = emptyList(),
         explicitStatementType: StatementType? = null,
         transform: (ResultSet) -> T
@@ -164,10 +162,11 @@ open class Transaction(private val transactionImpl: TransactionInterface) : User
     }.toString()
 
     internal fun fullIdentity(column: Column<*>, queryBuilder: QueryBuilder) = queryBuilder {
-        if (column.table is Alias<*>)
+        if (column.table is Alias<*>) {
             append(db.identifierManager.quoteIfNecessary(column.table.alias))
-        else
+        } else {
             append(db.identifierManager.quoteIfNecessary(column.table.tableName.inProperCase()))
+        }
         append('.')
         append(identity(column))
     }

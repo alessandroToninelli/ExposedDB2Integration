@@ -129,6 +129,7 @@ class AutoIncColumnType(
     private fun guessAutoIncTypeBy(sqlType: String): String? = when (sqlType) {
         currentDialect.dataTypeProvider.longType() -> currentDialect.dataTypeProvider.longAutoincType()
         currentDialect.dataTypeProvider.integerType() -> currentDialect.dataTypeProvider.integerAutoincType()
+        currentDialect.dataTypeProvider.dateTimeType() -> currentDialect.dataTypeProvider.dateTimeAutoInc()
         else -> null
     }
 

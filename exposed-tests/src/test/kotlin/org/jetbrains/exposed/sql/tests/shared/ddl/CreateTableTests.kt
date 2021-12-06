@@ -22,7 +22,7 @@ class CreateTableTests : DatabaseTestsBase() {
     fun createTableWithDuplicateColumn() {
         val assertionFailureMessage = "Can't create a table with multiple columns having the same name"
 
-        withDb() {
+        withDb {
             assertFails(assertionFailureMessage) {
                 SchemaUtils.create(TableWithDuplicatedColumn)
             }
@@ -43,7 +43,7 @@ class CreateTableTests : DatabaseTestsBase() {
 
             override val primaryKey = PrimaryKey(id1, id2)
         }
-        withDb() {
+        withDb {
             val id1ProperName = account.id1.name.inProperCase()
             val id2ProperName = account.id2.name.inProperCase()
             val tableName = account.tableName
@@ -63,7 +63,7 @@ class CreateTableTests : DatabaseTestsBase() {
         val pkConstraintName = "PKConstraintName"
 
         // Table with composite primary key
-        withDb() {
+        withDb {
             val id1ProperName = Person.id1.name.inProperCase()
             val id2ProperName = Person.id2.name.inProperCase()
             val tableName = Person.tableName
@@ -83,7 +83,7 @@ class CreateTableTests : DatabaseTestsBase() {
 
             override val primaryKey = PrimaryKey(user_name, name = pkConstraintName)
         }
-        withDb() {
+        withDb {
             val userNameProperName = user.user_name.name.inProperCase()
             val tableName = TransactionManager.current().identity(user)
 
@@ -294,6 +294,81 @@ class CreateTableTests : DatabaseTestsBase() {
                     " CONSTRAINT ${t.db.identifierManager.cutIfNecessaryAndQuote(fkName).inProperCase()}" +
                     " FOREIGN KEY (${t.identity(child.parentId)})" +
                     " REFERENCES ${t.identity(parent)}(${t.identity(parent.uniqueId)})" +
+                    ")"
+            )
+            assertEqualCollections(expected, child.ddl)
+        }
+    }
+
+    @Test
+    fun createTableWithExplicitCompositeForeignKeyName1() {
+        val fkName = "MyForeignKey1"
+        val parent = object : Table("parent1") {
+            val idA = integer("id_a")
+            val idB = integer("id_b")
+            override val primaryKey = PrimaryKey(idA, idB)
+        }
+        val child = object : Table("child1") {
+            val idA = integer("id_a")
+            val idB = integer("id_b")
+
+            init {
+                foreignKey(
+                    idA, idB,
+                    target = parent.primaryKey,
+                    onUpdate = ReferenceOption.RESTRICT,
+                    onDelete = ReferenceOption.RESTRICT,
+                    name = fkName
+                )
+            }
+        }
+        withTables(parent, child) {
+            val t = TransactionManager.current()
+            val expected = listOfNotNull(
+                child.autoIncColumn?.autoIncColumnType?.autoincSeq?.let { Sequence(it).createStatement().single() },
+                "CREATE TABLE " + addIfNotExistsIfSupported() + "${t.identity(child)} (" +
+                    "${child.columns.joinToString { it.descriptionDdl(false) }}," +
+                    " CONSTRAINT ${t.db.identifierManager.cutIfNecessaryAndQuote(fkName).inProperCase()}" +
+                    " FOREIGN KEY (${t.identity(child.idA)}, ${t.identity(child.idB)})" +
+                    " REFERENCES ${t.identity(parent)}(${t.identity(parent.idA)}, ${t.identity(parent.idB)})" +
+                    " ON DELETE RESTRICT ON UPDATE RESTRICT)"
+            )
+            assertEqualCollections(expected, child.ddl)
+        }
+    }
+
+    @Test
+    fun createTableWithExplicitCompositeForeignKeyName2() {
+        val fkName = "MyForeignKey2"
+        val parent = object : Table("parent2") {
+            val idA = integer("id_a")
+            val idB = integer("id_b")
+            init {
+                uniqueIndex(idA, idB)
+            }
+        }
+        val child = object : Table("child2") {
+            val idA = integer("id_a")
+            val idB = integer("id_b")
+
+            init {
+                foreignKey(
+                    idA to parent.idA, idB to parent.idB,
+                    onUpdate = ReferenceOption.NO_ACTION,
+                    onDelete = ReferenceOption.NO_ACTION,
+                    name = fkName
+                )
+            }
+        }
+        withTables(parent, child) {
+            val t = TransactionManager.current()
+            val expected = listOfNotNull(
+                child.autoIncColumn?.autoIncColumnType?.autoincSeq?.let { Sequence(it).createStatement().single() },
+                "CREATE TABLE " + addIfNotExistsIfSupported() + "${t.identity(child)} (" +
+                    "${child.columns.joinToString { it.descriptionDdl(false) }}," +
+                    " CONSTRAINT ${t.db.identifierManager.cutIfNecessaryAndQuote(fkName).inProperCase()}" +
+                    " FOREIGN KEY (${t.identity(child.idA)}, ${t.identity(child.idB)})" +
+                    " REFERENCES ${t.identity(parent)}(${t.identity(parent.idA)}, ${t.identity(parent.idB)})" +
                     ")"
             )
             assertEqualCollections(expected, child.ddl)

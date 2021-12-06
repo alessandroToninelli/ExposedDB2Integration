@@ -361,15 +361,14 @@ interface ISqlExpressionBuilder {
         caseSensitive: Boolean = true
     ): RegexpOp<T> = RegexpOp(this, pattern, caseSensitive)
 
-    /** Checks if this expression doesn't match the [pattern]. Supports regular expressions. */
-    @Deprecated("Use not(RegexpOp()) instead", ReplaceWith("regexp(pattern).not()"), DeprecationLevel.ERROR)
-    infix fun <T : String?> ExpressionWithColumnType<T>.notRegexp(pattern: String): Op<Boolean> = TODO()
-
     // Conditional Expressions
 
     /** Returns the first of its arguments that is not null. */
-    fun <T, S : T?, E : ExpressionWithColumnType<S>, R : T> coalesce(expr: E, alternate: ExpressionWithColumnType<out T>): Coalesce<T?, S, R> =
-        Coalesce(expr, alternate)
+    fun <T, S : T?, A : Expression<out T>, R : T> coalesce(
+        expr: ExpressionWithColumnType<S>,
+        alternate: A,
+        vararg others: A
+    ): Coalesce<T?, S, R> = Coalesce(expr, alternate, others = others)
 
     fun case(value: Expression<*>? = null): Case = Case(value)
 

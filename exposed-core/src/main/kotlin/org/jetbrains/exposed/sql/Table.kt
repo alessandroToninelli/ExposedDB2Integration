@@ -346,6 +346,11 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
     /** Returns all indices declared on the table. */
     val indices: List<Index> get() = _indices
 
+    private val _foreignKeys = mutableListOf<ForeignKeyConstraint>()
+
+    /** Returns all foreignKeys declared on the table. */
+    val foreignKeys: List<ForeignKeyConstraint> get() = columns.mapNotNull { it.foreignKey } + _foreignKeys
+
     private val checkConstraints = mutableListOf<Pair<String, Op<Boolean>>>()
 
     /**
@@ -412,80 +417,25 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
      */
     inner class PrimaryKey(
         /** Returns the columns that compose the primary key. */
-        vararg val columns: Column<*>,
+        val columns: Array<Column<*>>,
         /** Returns the name of the primary key. */
         val name: String = "pk_$tableName"
     ) {
+        constructor(firstColumn: Column<*>, vararg columns: Column<*>, name: String = "pk_$tableName") :
+            this(arrayOf(firstColumn, *columns), name)
+
         init {
-            checkMultipleDeclaration()
-            for (column in columns) column.markPrimaryKey()
             columns.sortWith(compareBy { !it.columnType.isAutoInc })
         }
-
-        /**
-         * Initialize PrimaryKey class with columns defined using [primaryKey] method
-         *
-         * This constructor must be removed when [primaryKey] method is no longer supported.
-         */
-        internal constructor(columns: List<Column<*>>) : this(columns = columns.toTypedArray())
-
-        /** Marks the receiver column as an element of primary key. */
-        private fun Column<*>.markPrimaryKey() {
-            indexInPK = table.columns.count { it.indexInPK != null } + 1
-        }
-
-        /** Check if both old and new declarations of primary key are defined.
-         *
-         * Remove columns from primary key to take columns declared in PrimaryKey class instead.
-         * Log an error.
-         * This function must be removed when [primaryKey] method is no longer supported.
-         */
-        private fun checkMultipleDeclaration() {
-            val table = this@Table
-            if (table.columns.any { it.indexInPK != null }) {
-                removeOldPrimaryKey()
-            }
-        }
-
-        /** This function must be removed when [primaryKey] method is no longer supported. */
-        private fun removeOldPrimaryKey() = columns.filter { it.indexInPK != null }.forEach { it.indexInPK = null }
     }
 
     /**
      * Returns the primary key of the table if present, `null` otherwise.
      *
-     * Currently, it is initialized with existing keys defined by [Column.primaryKey] function for a backward compatibility,
-     * but you have to define it explicitly by overriding that val instead.
+     * You have to define it explicitly by overriding that val instead or use one of predefined
+     * table types like [IntIdTable], [LongIdTable], or [UUIDIdTable]
      */
-    open val primaryKey: PrimaryKey? by lazy { getPrimaryKeyColumns()?.let(::PrimaryKey) }
-
-    /** Returns the list of columns in the primary key if present. */
-    private fun getPrimaryKeyColumns(): List<Column<*>>? = columns
-        .filter { it.indexInPK != null }
-        .sortedWith(compareBy({ !it.columnType.isAutoInc }, { it.indexInPK }))
-        .takeIf { it.isNotEmpty() }
-
-    /**
-     * Mark @receiver column as primary key.
-     *
-     * When you define multiple primary keys on a table it will create composite key.
-     * Order of columns in a primary key will be the same as order of the columns in a table mapping from top to bottom.
-     * If you desire to change the order only in a primary key provide [indx] parameter.
-     *
-     * @param indx An optional column index in a primary key
-     */
-    @Deprecated(
-        "This function will be no longer supported. Please use the new declarations of primary key by " +
-            "overriding the primaryKey property in the current table. " +
-            "Example : object TableName : Table() { override val primaryKey = PrimaryKey(column1, column2, name = \"CustomPKConstraintName\") }"
-    )
-    fun <T> Column<T>.primaryKey(indx: Int? = null): Column<T> = apply {
-        require(indx == null || table.columns.none { it.indexInPK == indx }) { "Table $tableName already contains PK at $indx" }
-        indexInPK = indx ?: (table.columns.count { it.indexInPK != null } + 1)
-        exposedLogger.error(
-            "primaryKey(indx) method is deprecated. Use override val primaryKey=PrimaryKey() declaration instead."
-        )
-    }
+    open val primaryKey: PrimaryKey? = null
 
     // EntityID columns
 
@@ -493,7 +443,6 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
     @Suppress("UNCHECKED_CAST")
     fun <T : Comparable<T>> Column<T>.entityId(): Column<EntityID<T>> {
         val newColumn = Column<EntityID<T>>(table, name, EntityIDColumnType(this)).also {
-            it.indexInPK = indexInPK
             it.defaultValueFun = defaultValueFun?.let { { EntityIDFunctionProvider.createEntityID(it(), table as IdTable<T>) } }
         }
         return replaceColumn(this, newColumn)
@@ -874,7 +823,7 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
         onDelete: ReferenceOption? = null,
         onUpdate: ReferenceOption? = null,
         fkName: String? = null
-    ): Column<T?> = Column<T>(this, name, refColumn.columnType.cloneAsBaseType()).references(refColumn, onDelete, onUpdate, fkName).nullable()
+    ): Column<T?> = reference(name, refColumn, onDelete, onUpdate, fkName).nullable()
 
     /**
      * Creates a column with the specified [name] with an optional reference to the [refColumn] column with [onDelete], [onUpdate], and [fkName] options.
@@ -897,10 +846,7 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
         onDelete: ReferenceOption? = null,
         onUpdate: ReferenceOption? = null,
         fkName: String? = null
-    ): Column<E?> {
-        val entityIdColumn = entityId(name, (refColumn.columnType as EntityIDColumnType<T>).idColumn) as Column<E>
-        return entityIdColumn.references(refColumn, onDelete, onUpdate, fkName).nullable()
-    }
+    ): Column<E?> = reference(name, refColumn, onDelete, onUpdate, fkName).nullable()
 
     /**
      * Creates a column with the specified [name] with an optional reference to the `id` column in [foreign] table with [onDelete], [onUpdate], and [fkName] options.
@@ -921,7 +867,7 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
         onDelete: ReferenceOption? = null,
         onUpdate: ReferenceOption? = null,
         fkName: String? = null
-    ): Column<EntityID<T>?> = entityId(name, foreign).references(foreign.id, onDelete, onUpdate, fkName).nullable()
+    ): Column<EntityID<T>?> = reference(name, foreign, onDelete, onUpdate, fkName).nullable()
 
     // Miscellaneous
 
@@ -994,6 +940,49 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
      * @param columns Columns that compose the index.
      */
     fun uniqueIndex(customIndexName: String? = null, vararg columns: Column<*>): Unit = index(customIndexName, true, *columns)
+
+    /**
+     * Creates a composite foreign key.
+     *
+     * @param from Columns that compose the foreign key. Their order should match the order of columns in referenced primary key.
+     * @param target Primary key of the referenced table.
+     * @param onUpdate Reference option when performing update operations.
+     * @param onUpdate Reference option when performing delete operations.
+     * @param name Custom foreign key name
+     */
+    fun foreignKey(
+        vararg from: Column<*>,
+        target: PrimaryKey,
+        onUpdate: ReferenceOption? = null,
+        onDelete: ReferenceOption? = null,
+        name: String? = null
+    ) {
+        require(from.size == target.columns.size) {
+            val fkName = if (name != null) " ($name)" else ""
+            "Foreign key$fkName has ${from.size} columns, while referenced primary key (${target.name}) has ${target.columns.size}"
+        }
+        _foreignKeys.add(ForeignKeyConstraint(from.zip(target.columns).toMap(), onUpdate, onDelete, name))
+    }
+
+    /**
+     * Creates a composite foreign key.
+     *
+     * @param references Pairs of columns that compose the foreign key.
+     * First value of pair is a column of referencing table, second value - a column of a referenced one.
+     * All referencing columns must belong to this table.
+     * All referenced columns must belong to the same table.
+     * @param onUpdate Reference option when performing update operations.
+     * @param onUpdate Reference option when performing delete operations.
+     * @param name Custom foreign key name
+     */
+    fun foreignKey(
+        vararg references: Pair<Column<*>, Column<*>>,
+        onUpdate: ReferenceOption? = null,
+        onDelete: ReferenceOption? = null,
+        name: String? = null
+    ) {
+        _foreignKeys.add(ForeignKeyConstraint(references.toMap(), onUpdate, onDelete, name))
+    }
 
     // Check constraints
 
@@ -1075,7 +1064,7 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
 
         val addForeignKeysInAlterPart = SchemaUtils.checkCycle(this) && currentDialect !is SQLiteDialect
 
-        val foreignKeyConstraints = columns.mapNotNull { it.foreignKey }
+        val foreignKeyConstraints = foreignKeys
 
         val createTable = buildString {
             append("CREATE TABLE ")
@@ -1148,13 +1137,6 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
 
     object Dual : Table("dual")
 }
-
-@Deprecated(
-    "Use Sequence class instead of Seq class.",
-    ReplaceWith("Sequence(name)", "org.jetbrains.exposed.sql.Sequence"),
-    DeprecationLevel.ERROR
-)
-data class Seq(private val name: String)
 
 /** Returns the list of tables to which the columns in this column set belong. */
 fun ColumnSet.targetTables(): List<Table> = when (this) {

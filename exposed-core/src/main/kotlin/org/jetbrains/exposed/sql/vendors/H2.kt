@@ -42,6 +42,7 @@ internal object H2FunctionProvider : FunctionProvider() {
             ignore && uniqueCols.isNotEmpty() && transaction.isMySQLMode -> {
                 super.insert(false, table, columns, expr, transaction).replace("INSERT", "INSERT IGNORE")
             }
+            ignore -> transaction.throwUnsupportedException("INSERT IGNORE supported only on H2 v1.4.197+ with MODE=MYSQL.")
             else -> super.insert(ignore, table, columns, expr, transaction)
         }
     }
@@ -158,8 +159,8 @@ open class H2Dialect : VendorDialect(dialectName, H2DataTypeProvider, H2Function
 
     override fun createDatabase(name: String) = "CREATE SCHEMA IF NOT EXISTS ${name.inProperCase()}"
 
-    override fun modifyColumn(column: Column<*>, nullabilityChanged: Boolean, autoIncrementChanged: Boolean, defaultChanged: Boolean): List<String> =
-        super.modifyColumn(column, nullabilityChanged, autoIncrementChanged, defaultChanged).map { it.replace("MODIFY COLUMN", "ALTER COLUMN") }
+    override fun modifyColumn(column: Column<*>, columnDiff: ColumnDiff): List<String> =
+        super.modifyColumn(column, columnDiff).map { it.replace("MODIFY COLUMN", "ALTER COLUMN") }
 
     override fun dropDatabase(name: String) = "DROP SCHEMA IF EXISTS ${name.inProperCase()}"
 

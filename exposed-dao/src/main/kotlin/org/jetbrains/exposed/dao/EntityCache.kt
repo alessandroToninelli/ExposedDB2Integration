@@ -6,12 +6,14 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transactionScope
 import java.util.*
 import kotlin.collections.HashMap
+import kotlin.collections.HashSet
 
 val Transaction.entityCache: EntityCache by transactionScope { EntityCache(this) }
 
 @Suppress("UNCHECKED_CAST")
 class EntityCache(private val transaction: Transaction) {
     private var flushingEntities = false
+    private var initializingEntities: LinkedIdentityHashSet<Entity<*>> = LinkedIdentityHashSet()
     val data = LinkedHashMap<IdTable<*>, MutableMap<Any, Entity<*>>>()
     internal val inserts = LinkedHashMap<IdTable<*>, MutableSet<Entity<*>>>()
     private val updates = LinkedHashMap<IdTable<*>, MutableSet<Entity<*>>>()
@@ -55,7 +57,9 @@ class EntityCache(private val transaction: Transaction) {
     }
 
     fun <ID : Comparable<ID>, T : Entity<ID>> find(f: EntityClass<ID, T>, id: EntityID<ID>): T? =
-        getMap(f)[id.value] as T? ?: inserts[f.table]?.firstOrNull { it.id == id } as? T
+        getMap(f)[id.value] as T?
+            ?: inserts[f.table]?.firstOrNull { it.id == id } as? T
+            ?: initializingEntities.firstOrNull { it.klass == f && it.id == id } as? T
 
     fun <ID : Comparable<ID>, T : Entity<ID>> findAll(f: EntityClass<ID, T>): Collection<T> = getMap(f).values as Collection<T>
 
@@ -69,6 +73,17 @@ class EntityCache(private val transaction: Transaction) {
 
     fun <ID : Comparable<ID>, T : Entity<ID>> remove(table: IdTable<ID>, o: T) {
         getMap(table).remove(o.id.value)
+    }
+
+    internal fun addNotInitializedEntityToQueue(entity: Entity<*>) {
+        require(initializingEntities.add(entity)) { "Entity ${entity::class.simpleName} already in initialization process" }
+    }
+
+    internal fun finishEntityInitialization(entity: Entity<*>) {
+        require(initializingEntities.lastOrNull() == entity) {
+            "Can't finish initialization for entity ${entity::class.simpleName} - the initialization order is broken"
+        }
+        initializingEntities.remove(entity)
     }
 
     fun <ID : Comparable<ID>, T : Entity<ID>> scheduleInsert(f: EntityClass<ID, T>, o: T) {
@@ -125,22 +140,28 @@ class EntityCache(private val transaction: Transaction) {
             }
 
             if (insertedTables.isNotEmpty()) {
-                removeTablesReferrers(insertedTables)
+                removeTablesReferrers(insertedTables, true)
             }
         } finally {
             flushingEntities = false
         }
     }
 
-    internal fun removeTablesReferrers(insertedTables: Collection<Table>) {
+    internal fun removeTablesReferrers(tables: Collection<Table>, isInsert: Boolean) {
+        val insertedTablesSet = tables.toSet()
+        val columnsToInvalidate = tables.flatMapTo(hashSetOf()) { it.columns.mapNotNull { it.takeIf { it.referee != null } } }
 
-        val insertedTablesSet = insertedTables.toSet()
-        val tablesToRemove: List<Table> = referrers.values.flatMapTo(HashSet()) { it.keys.map { it.table } }
-            .filter { table -> table.columns.any { c -> c.referee?.table in insertedTablesSet } } + insertedTablesSet
+        columnsToInvalidate.forEach {
+            referrers.remove(it)
+        }
 
-        referrers.mapNotNull { (entityId, entityReferrers) ->
-            entityReferrers.filterKeys { it.table in tablesToRemove }.keys.forEach { entityReferrers.remove(it) }
-            entityId.takeIf { entityReferrers.isEmpty() }
+        referrers.keys.filter { refColumn ->
+            when {
+                isInsert -> false
+                refColumn.referee?.table in insertedTablesSet -> true
+                refColumn.table.columns.any { it.referee?.table in tables } -> true
+                else -> false
+            }
         }.forEach {
             referrers.remove(it)
         }

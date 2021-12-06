@@ -1,3 +1,48 @@
+# 0.36.2
+Feature:
+* Allow skipping SchemaUtils logging with help of new `withLogs` param on functions ([#1378](https://github.com/JetBrains/Exposed/issues/1378))
+
+
+Bug fixes:
+* Prevent too aggressive entity cache invalidation
+* Foreign Key with camel-case name throws `java.util.NoSuchElementException`. Fixed by [sultanofcardio](https://github.com/sultanofcardio) 
+* Union of queries with differently derived columns loses the derived columns ([#1373](https://github.com/JetBrains/Exposed/issues/1373))
+
+# 0.36.1
+Deprecations:
+* `NotRegexpOp/notRegexp` was removed
+* `ResultRow.tryGet` was removed
+* `ResiltSet.create(rs: ResultSet, fields: List<Expression<*>>)` was removed
+* `Seq` data class was removed
+* `EntityID`, `IdTable`, `IntIdTable`, `LongIdTable`, `UUIDTable`  from `org.jetbrains.exposed.dao` package were removed
+* All classes and functions from `org.jetbrains.exposed.sql.java-time` were removed in favour to `org.jetbrains.exposed.sql.javatime`
+* `Column.primaryKey` function was removed in favor to explicit `Table.primaryKey` declaration  
+
+Breaking Changes:
+* All inheritors of `IdTable` (`IntIdTable`, `LongIdTable`, `UUIDTable`) have their `id` and `primaryKey` fields are final 
+
+Features:
+* `DatabaseConfig.defaultSchema` was introduced to set schema before first call in transaction
+* `Coalesce` now accepts any number for arguments
+
+Bug fixes:
+* EntityCache was reinitialized on explicit `Transaction.commit` 
+
+# 0.35.3
+Bug fixes:
+* Invalid column's default value check in `SchemaUtils.addMissingColumnsStatements` could lead unneeded column modification  
+
+# 0.35.2
+Feature:
+* `DatabaseConfig.explicitDialect` param added to predefine dialect for a Database
+
+Bug fixes:
+* Don't fail when getting dialectName for user's defined drivers
+* [Spring] Possible connection leak within SpringTransactionManager [#1355](https://github.com/JetBrains/Exposed/issues/1355)
+* Referrers cache wasn't invalidated when statement was executed on reference table (`via` use-case)
+* New entity was flushed on `Entity.reload(flush = false)` what can lead to unexpected results
+* ResultSet stayed unclosed if Query's result was not iterated till the end  
+
 # 0.35.1
 Features:
 * `kotlin-datetime` can be used for datetime mappings with new 'exposed-kotlin-datetime' module
@@ -8,7 +53,7 @@ Features:
 val dbConfig = DatabaseConfig {
     sqlLogger = Slf4jSqlDebugLogger
     useNestedTransactions = false
-    defaultFetchSize = -1 // unlimited
+    defaultFetchSize = null // unlimited
     defaultIsolationLevel = -1 // DB specific
     defaultRepetitionAttempts = 3
     warnLongQueriesDuration = null // no long query tracing

@@ -44,9 +44,6 @@ class ResultRow(
 
     fun <T> getOrNull(c: Expression<T>): T? = if (hasValue(c)) rawToColumnValue(getRaw(c), c) else null
 
-    @Deprecated("Replaced with getOrNull to be more kotlinish", replaceWith = ReplaceWith("getOrNull(c)"))
-    fun <T> tryGet(c: Expression<T>): T? = getOrNull(c)
-
     @Suppress("UNCHECKED_CAST")
     private fun <T> rawToColumnValue(raw: T?, c: Expression<T>): T {
         return when {
@@ -68,8 +65,13 @@ class ResultRow(
 
         val index = fieldIndex[c]
             ?: ((c as? Column<*>)?.columnType as? EntityIDColumnType<*>)?.let { fieldIndex[it.idColumn] }
-            ?: fieldIndex.keys.firstOrNull {
-                ((it as? Column<*>)?.columnType as? EntityIDColumnType<*>)?.idColumn == c
+            ?: fieldIndex.keys.firstOrNull { exp ->
+                when {
+//                    exp is Column<*> && exp.table is Alias<*> -> exp.table.delegate == c
+                    exp is Column<*> -> (exp.columnType as? EntityIDColumnType<*>)?.idColumn == c
+                    exp is ExpressionAlias<*> -> exp.delegate == c
+                    else -> false
+                }
             }?.let { fieldIndex[it] }
             ?: error("$c is not in record set")
 
@@ -82,11 +84,6 @@ class ResultRow(
     internal object NotInitializedValue
 
     companion object {
-
-        @Deprecated(level = DeprecationLevel.ERROR, message = "Consider to use [create] with map param instead")
-        fun create(rs: ResultSet, fields: List<Expression<*>>): ResultRow {
-            return create(rs, fields.distinct().mapIndexed { index, field -> field to index }.toMap())
-        }
 
         fun create(rs: ResultSet, fieldsIndex: Map<Expression<*>, Int>): ResultRow {
             return ResultRow(fieldsIndex).apply {

@@ -10,6 +10,7 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.plugins.signing.SigningExtension
 import org.gradle.api.plugins.JavaPluginExtension
 
+
 infix fun <T> Property<T>.by(value: T) {
     set(value)
 }
@@ -29,18 +30,12 @@ fun MavenPom.configureMavenCentralMetadata(project: Project) {
 
     developers {
         developer {
-            id by "JetBrains"
-            name by "JetBrains Team"
-            organization by "JetBrains"
-            organizationUrl by "https://www.jetbrains.com"
+            id by "alessandroToninelli"
+            name by "Alessandro"
+            email by "alessandro.toninelli@toninelli.it"
         }
     }
 
-    scm {
-        url by "https://github.com/JetBrains/Exposed"
-        connection by "scm:git:git://github.com/JetBrains/Exposed.git"
-        developerConnection by "scm:git:git@github.com:JetBrains/Exposed.git"
-    }
 }
 
 fun MavenPublication.signPublicationIfKeyPresent(project: Project) {
@@ -55,7 +50,7 @@ fun MavenPublication.signPublicationIfKeyPresent(project: Project) {
     }
 }
 
-fun Project._publishing(configure: PublishingExtension.() -> Unit) {
+fun Project._publishingLocalTon(configure: PublishingExtension.() -> Unit) {
     extensions.configure("publishing", configure)
 }
 

@@ -4,7 +4,7 @@ import org.jetbrains.exposed.gradle.Versions
 
 plugins {
     kotlin("jvm") apply true
-    id("testWithDBs")
+//    id("testWithDBs")
 }
 
 repositories {
@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":exposed-core"))
     implementation(project(":exposed-jdbc"))
     implementation(project(":exposed-dao"))
+    implementation(project(":exposed-java-time"))
     implementation(kotlin("test-junit"))
     implementation("org.slf4j", "slf4j-api", Versions.slf4j)
     implementation("org.apache.logging.log4j", "log4j-slf4j-impl", Versions.log4j2)
@@ -33,11 +34,11 @@ dependencies {
     testCompileOnly("org.xerial", "sqlite-jdbc", Versions.sqlLite3)
 }
 
-tasks.withType<Test>().configureEach {
-    jvmArgs = listOf("-XX:MaxPermSize=256m")
-    testLogging {
-        events.addAll(listOf(TestLogEvent.PASSED, TestLogEvent.FAILED, TestLogEvent.SKIPPED))
-        showStandardStreams = true
-        exceptionFormat = TestExceptionFormat.FULL
-    }
-}
+//tasks.withType<Test>().configureEach {
+//    jvmArgs = listOf("-XX:MaxPermSize=256m")
+//    testLogging {
+//        events.addAll(listOf(TestLogEvent.PASSED, TestLogEvent.FAILED, TestLogEvent.SKIPPED))
+//        showStandardStreams = true
+//        exceptionFormat = TestExceptionFormat.FULL
+//    }
+//}

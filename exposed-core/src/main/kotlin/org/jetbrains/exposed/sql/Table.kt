@@ -13,6 +13,7 @@ import org.jetbrains.exposed.sql.vendors.currentDialect
 import org.jetbrains.exposed.sql.vendors.currentDialectIfAvailable
 import org.jetbrains.exposed.sql.vendors.inProperCase
 import java.math.BigDecimal
+import java.time.LocalDateTime
 import java.util.*
 import kotlin.reflect.KClass
 import kotlin.reflect.KMutableProperty1
@@ -650,6 +651,7 @@ open class Table(name: String = "") : ColumnSet(), DdlAware {
             }
         }
     }
+
 
     /** Sets the default value for this column in the database side. */
     fun <T> Column<T>.defaultExpression(defaultValue: Expression<T>): Column<T> = apply {

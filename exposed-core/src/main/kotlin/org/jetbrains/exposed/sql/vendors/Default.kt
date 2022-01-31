@@ -86,6 +86,7 @@ abstract class DataTypeProvider {
 
     open fun dateTimeAutoInc(): String = "DATETIME"
 
+    open fun defaultDateTime(): String = "DEFAULT TIMESTAMP"
 
     // Boolean type
 
@@ -105,6 +106,7 @@ abstract class DataTypeProvider {
         e is LiteralOp<*> -> "$e"
         currentDialect is MysqlDialect -> "$e"
         currentDialect is SQLServerDialect -> "$e"
+        currentDialect is DB2Dialect -> "$e"
         else -> "($e)"
     }
 

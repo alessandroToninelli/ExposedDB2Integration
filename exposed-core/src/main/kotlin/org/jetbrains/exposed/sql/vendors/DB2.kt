@@ -22,6 +22,8 @@ internal object DB2DataTypeProvider : DataTypeProvider() {
         return super.nullableType()
     }
 
+
+
 }
 
 internal open class DB2FunctionProvider : FunctionProvider() {
@@ -39,6 +41,9 @@ class DB2Dialect : VendorDialect(dialectName, DB2DataTypeProvider, DB2FunctionPr
     override val supportsIfNotExists: Boolean = false
     override val supportsOnlyIdentifiersInGeneratedKeys: Boolean = true
 
+    override fun isAllowedAsColumnDefault(e: Expression<*>): Boolean {
+        return true
+    }
 
     companion object {
         /** DB2 dialect name */

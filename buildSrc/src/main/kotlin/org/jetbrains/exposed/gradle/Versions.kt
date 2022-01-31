@@ -1,14 +1,15 @@
 package org.jetbrains.exposed.gradle
 
 object Versions {
-    const val kotlin = "1.6.0"
-    const val kotlinCoroutines = "1.6.0-RC"
+    const val kotlin = "1.6.10"
+    const val kotlinCoroutines = "1.6.0"
 
     const val slf4j = "1.7.30"
     const val log4j2 = "2.14.1"
 
     /** JDBC drivers **/
     const val h2 = "1.4.199"
+    const val h2_v2 = "2.0.202"
     const val mariaDB = "2.7.4"
     const val mysql51 = "5.1.49"
     const val mysql80 = "8.0.27"

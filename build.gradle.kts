@@ -39,5 +39,6 @@ subprojects {
 //}
 
 repositories {
+    mavenLocal()
     mavenCentral()
 }

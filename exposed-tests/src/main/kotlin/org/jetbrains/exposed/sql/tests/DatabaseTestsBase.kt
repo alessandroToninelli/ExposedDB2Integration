@@ -72,11 +72,11 @@ enum class TestDB(
         beforeConnection = {
             Locale.setDefault(Locale.ENGLISH)
             val tmp = Database.connect(ORACLE.connection(), user = "sys as sysdba", password = "Oracle18", driver = ORACLE.driver)
-            transaction(Connection.TRANSACTION_READ_COMMITTED, 1, tmp) {
+            transaction(Connection.TRANSACTION_READ_COMMITTED, 1, db  = tmp) {
                 try {
                     exec("DROP USER ExposedTest CASCADE")
                 } catch (e: Exception) { // ignore
-                    exposedLogger.warn("Exception on deleting ExposedTest user", e)
+                    exposedLogger.warn("Exception on deleting ExposedTest user")
                 }
                 exec("CREATE USER ExposedTest ACCOUNT UNLOCK IDENTIFIED BY 12345")
                 exec("grant all privileges to ExposedTest")
@@ -245,5 +245,9 @@ abstract class DatabaseTestsBase {
         "IF NOT EXISTS "
     } else {
         ""
+    }
+
+    protected fun prepareSchemaForTest(schemaName: String) : Schema {
+        return Schema(schemaName, defaultTablespace = "USERS", temporaryTablespace = "TEMP ", quota = "20M", on = "USERS")
     }
 }

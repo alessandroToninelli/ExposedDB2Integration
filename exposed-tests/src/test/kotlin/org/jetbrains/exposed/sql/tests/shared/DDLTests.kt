@@ -14,6 +14,7 @@ import org.jetbrains.exposed.sql.tests.TestDB
 import org.jetbrains.exposed.sql.tests.currentDialectTest
 import org.jetbrains.exposed.sql.tests.inProperCase
 import org.jetbrains.exposed.sql.tests.shared.dml.DMLTestsData
+import org.jetbrains.exposed.sql.vendors.OracleDialect
 import org.jetbrains.exposed.sql.vendors.SQLServerDialect
 import org.jetbrains.exposed.sql.vendors.SQLiteDialect
 import org.junit.Test
@@ -758,10 +759,14 @@ class DDLTests : DatabaseTestsBase() {
 
     @Test
     fun createTableWithForeignKeyToAnotherSchema() {
-        val one = Schema("one")
-        val two = Schema("two")
+        val one = prepareSchemaForTest("one")
+        val two = prepareSchemaForTest("two")
         withSchemas(excludeSettings = listOf(TestDB.SQLITE), schemas = arrayOf(two, one)) {
-            SchemaUtils.create(TableFromSchemeOne, TableFromSchemeTwo)
+            SchemaUtils.create(TableFromSchemeOne)
+            if (currentDialectTest is OracleDialect) {
+                exec("GRANT SELECT ON ${TableFromSchemeOne.tableName} to TWO;")
+            }
+            SchemaUtils.create(TableFromSchemeTwo)
             val idFromOne = TableFromSchemeOne.insertAndGetId { }
 
             TableFromSchemeTwo.insert {
@@ -924,4 +929,35 @@ class DDLTests : DatabaseTestsBase() {
             }
         }
     }
+
+    @Test
+    fun createTableWithCompositePrimaryKeyAndSchema() {
+        val one = prepareSchemaForTest("test")
+        val tableA = object : Table("test.table_a") {
+            val idA = integer("id_a")
+            val idB = integer("id_b")
+            override val primaryKey = PrimaryKey(idA, idB)
+        }
+
+        val tableB = object : Table("test.table_b") {
+            val idA = integer("id_a")
+            val idB = integer("id_b")
+            override val primaryKey = PrimaryKey(arrayOf(idA, idB))
+        }
+
+        withSchemas(excludeSettings = listOf(TestDB.SQLITE), schemas = arrayOf(one)) {
+            SchemaUtils.create(tableA, tableB)
+            tableA.insert { it[idA] = 1; it[idB] = 1 }
+            tableB.insert { it[idA] = 1; it[idB] = 1 }
+
+            assertEquals(1, tableA.selectAll().count())
+            assertEquals(1, tableB.selectAll().count())
+
+            if (currentDialectTest is SQLServerDialect) {
+                SchemaUtils.drop(tableA, tableB)
+            }
+
+        }
+    }
+
 }

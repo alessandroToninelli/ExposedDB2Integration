@@ -1,3 +1,45 @@
+# 0.39.2
+Infrastructure:
+* All modules built with Kotlin 1.6 as a target
+
+Libs updates:
+* h2-database 2.1.214
+* MaridDB driver 2.7.6 and 3.0.6
+* MySQL driver 8.0.30
+* PostgreSQL driver 42.4.0
+* SQLServer driver 9.4.1.jre8
+* Java Money API 1.1
+* Spring Framework 5.3.22
+* Spring Boot 2.7.2
+* Spring Security Crypto 5.6.6
+
+Bug Fixes:
+* Converting of `LocalDateTime` values to `Instant` supported for `JavaInstantColumnType` by [hfazai](https://github.com/hfazai)
+* [Oracle] Better handling of bool column in queries ([#1540](https://github.com/JetBrains/Exposed/issues/1540)). PR by [maio](https://github.com/maio)
+* [Oracle] Proper resolving tables with schemas
+
+# 0.39.1
+Infrastructure:
+* Kotlin 1.7.10
+* Kotlin Coroutines 1.6.4
+* Datetime/Timestamp comparison test improvements by [Jerbell](https://github.com/Jerbell)  
+
+Feature:
+* `Transaction` added into `afterCommit` and `afterRollback` in `StatementInterceptor` ([#1530](https://github.com/JetBrains/Exposed/issues/1530)). PR by [rsromanowski](https://github.com/rsromanowski) 
+* `andIfNotNull` and `orIfNotNull` operators was added by [xJoeWoo](https://github.com/xJoeWoo) to perform logical operations with nullable condition
+* `like/notLike` support providing escape character when used with `LikePattern`. Improvement contributed by [spand](https://github.com/spand)
+* `CurrentDate` function introduced by [naftalmm](https://github.com/naftalmm)
+* Better representation of long query in logs 
+
+Bug Fixes:
+* `neq` incorrectly resolved with nullable values  ([#1489](https://github.com/JetBrains/Exposed/issues/1489))
+* `newSuspendedTransaction` now accepts generic `CoroutineContext` instead of `CoroutineDispatcher`, fixed by [rasharab](https://github.com/rasharab) 
+* Argument value error acquires when `REPLACE` used with expressions under MySQL. Founded and fixed by [Tiscs](https://github.com/Tiscs)
+* `EntityClass#wramUpReferences` doesn't store the cached values. Resolved by [Joddev](https://github.com/Joddev)
+* Creating tables with composite primary key and defined schema doesn't work. Fixed by [davidwheeler123](https://github.com/davidwheeler123)
+* Eager loading of Parent-Child relations doen't work ([#1363](https://github.com/JetBrains/Exposed/issues/1363))
+* Possible StackOverflowError when processing entities hooks which executes flush
+
 # 0.38.2
 Infrastructure:
 * Kotlin Coroutines 1.6.1
@@ -6,7 +48,7 @@ Infrastructure:
 * h2-database 2.1.212
 * MaridDB driver 2.7.5
 * MySQL driver 8.0.28
-* PostgreSQL driver 4.3.3
+* PostgreSQL driver 42.3.3
 
 Feature:
 * New `optimizedLoad` param introduced for `EntityClass.warmUpLinkedReferences`. 
@@ -32,7 +74,7 @@ Infrastructure:
 
 Feature:
 * New `exposed-crypt` module added. Module contains two new `encryptedVarchar` and `encryptedBinary` columns which allows to store encrypted values in database and encode/decode them on client. 
-  Check `SelectTests.test encryptedColumnType with a string` test for the sample usage 
+  Check [`SelectTests.test encryptedColumnType with a string`](https://github.com/JetBrains/Exposed/blob/0.38.1/exposed-tests/src/test/kotlin/org/jetbrains/exposed/sql/tests/shared/dml/SelectTests.kt#L264) test for the sample usage 
 * Allow to pass DatabaseConfig in SpringTransactionManager. PR by [stengvac](https://github.com/stengvac)
 * `CompoundBooleanOp` (`AndOp` and `OrOp`) is sealed class now
 * Entity explicit constructor lambda can be defined on `EntityClass` via `entityCtor` parameter to prevent using reflection (for example). Improved by [m-sasha](https://github.com/m-sasha)

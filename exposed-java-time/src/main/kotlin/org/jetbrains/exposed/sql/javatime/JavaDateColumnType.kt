@@ -79,8 +79,8 @@ class JavaLocalDateColumnType : ColumnType(), IDateColumnType {
         else -> LocalDate.parse(value.toString())
     }
 
-    override fun notNullValueToDB(value: Any) = when {
-        value is LocalDate -> java.sql.Date(value.millis)
+    override fun notNullValueToDB(value: Any) = when (value) {
+        is LocalDate -> java.sql.Date(value.millis)
         else -> value
     }
 
@@ -199,6 +199,7 @@ class JavaInstantColumnType : ColumnType(), IDateColumnType {
             is String -> return value
             is Instant -> value
             is java.sql.Timestamp -> value.toInstant()
+            is LocalDateTime -> value.atZone(ZoneId.systemDefault()).toInstant()
             else -> error("Unexpected value: $value of ${value::class.qualifiedName}")
         }
 

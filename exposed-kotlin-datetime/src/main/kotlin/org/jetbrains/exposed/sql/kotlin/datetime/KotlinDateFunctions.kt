@@ -8,6 +8,7 @@ import kotlinx.datetime.LocalDateTime
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.Function
 import org.jetbrains.exposed.sql.vendors.MysqlDialect
+import org.jetbrains.exposed.sql.vendors.SQLServerDialect
 import org.jetbrains.exposed.sql.vendors.currentDialect
 import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
@@ -37,6 +38,16 @@ object CurrentDateTime : Function<LocalDateTime>(KotlinLocalDateTimeColumnType.I
 
     @Deprecated("This class is now a singleton, no need for its constructor call; this method is provided for backward-compatibility only, and will be removed in future releases")
     operator fun invoke() = this
+}
+
+object CurrentDate : Function<LocalDate>(KotlinLocalDateColumnType.INSTANCE) {
+    override fun toQueryBuilder(queryBuilder: QueryBuilder) = queryBuilder {
+        +when (currentDialect) {
+            is MysqlDialect -> "CURRENT_DATE()"
+            is SQLServerDialect -> "GETDATE()"
+            else -> "CURRENT_DATE"
+        }
+    }
 }
 
 class CurrentTimestamp<T> : Expression<T>() {

@@ -570,6 +570,8 @@ interface DatabaseDialect {
 
     val supportsOrderByNullsFirstLast: Boolean get() = false
 
+    val likePatternSpecialChars: Map<Char, Char?> get() = defaultLikePatternSpecialChars
+
     /** Returns the name of the current database. */
     fun getDatabase(): String
 
@@ -637,6 +639,10 @@ interface DatabaseDialect {
         if (cascade) {
             append(" CASCADE")
         }
+    }
+
+    companion object {
+        private val defaultLikePatternSpecialChars = mapOf('%' to null, '_' to null)
     }
 }
 

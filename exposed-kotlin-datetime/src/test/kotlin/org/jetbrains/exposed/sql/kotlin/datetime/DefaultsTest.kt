@@ -18,10 +18,15 @@ import org.jetbrains.exposed.sql.tests.shared.assertEqualCollections
 import org.jetbrains.exposed.sql.tests.shared.assertEqualLists
 import org.jetbrains.exposed.sql.tests.shared.assertEquals
 import org.jetbrains.exposed.sql.tests.shared.expectException
+import org.jetbrains.exposed.sql.vendors.H2Dialect
 import org.jetbrains.exposed.sql.vendors.MysqlDialect
 import org.jetbrains.exposed.sql.vendors.OracleDialect
 import org.jetbrains.exposed.sql.vendors.SQLServerDialect
+import org.jetbrains.exposed.sql.vendors.h2Mode
 import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.ExperimentalTime
@@ -55,6 +60,32 @@ class DefaultsTest : DatabaseTestsBase() {
         override fun hashCode(): Int = id.value.hashCode()
 
         companion object : IntEntityClass<DBDefault>(TableWithDBDefault)
+    }
+
+    @Test
+    fun testCanUseClientDefaultOnNullableColumn() {
+        val defaultValue: Int? = null
+        val table = object : IntIdTable() {
+            val clientDefault = integer("clientDefault").nullable().clientDefault { defaultValue }
+        }
+        val returnedDefault = table.clientDefault.defaultValueFun?.invoke()
+
+        assertTrue(table.clientDefault.columnType.nullable, "Expected clientDefault columnType to be nullable")
+        assertNotNull(table.clientDefault.defaultValueFun, "Expected clientDefault column to have a default value fun, but was null")
+        assertEquals(defaultValue, returnedDefault, "Expected clientDefault to return $defaultValue, but was $returnedDefault")
+    }
+
+    @Test
+    fun testCanSetNullableColumnToUseClientDefault() {
+        val defaultValue = 123
+        val table = object : IntIdTable() {
+            val clientDefault = integer("clientDefault").clientDefault { defaultValue }.nullable()
+        }
+        val returnedDefault = table.clientDefault.defaultValueFun?.invoke()
+
+        assertTrue(table.clientDefault.columnType.nullable, "Expected clientDefault columnType to be nullable")
+        assertNotNull(table.clientDefault.defaultValueFun, "Expected clientDefault column to have a default value fun, but was null")
+        assertEquals(defaultValue, returnedDefault, "Expected clientDefault to return $defaultValue, but was $returnedDefault")
     }
 
     @Test
@@ -176,8 +207,8 @@ class DefaultsTest : DatabaseTestsBase() {
         val tsLiteral = timestampLiteral(tsConstValue)
         val durConstValue = Duration.milliseconds(tsConstValue.toEpochMilliseconds())
         val durLiteral = durationLiteral(durConstValue)
-//        val tmConstValue = LocalTime.of(12, 0)
-//        val tLiteral = timeLiteral(tmConstValue)
+        val tmConstValue = LocalTime(12, 0)
+        val tLiteral = timeLiteral(tmConstValue)
 
         val TestTable = object : IntIdTable("t") {
             val s = varchar("s", 100).default("test")
@@ -192,8 +223,8 @@ class DefaultsTest : DatabaseTestsBase() {
             val t6 = timestamp("t6").defaultExpression(tsLiteral)
             val t7 = duration("t7").default(durConstValue)
             val t8 = duration("t8").defaultExpression(durLiteral)
-//            val t9 = time("t9").default(tmConstValue)
-//            val t10 = time("t10").defaultExpression(tLiteral)
+            val t9 = time("t9").default(tmConstValue)
+            val t10 = time("t10").defaultExpression(tLiteral)
         }
 
         fun Expression<*>.itOrNull() = when {
@@ -206,12 +237,13 @@ class DefaultsTest : DatabaseTestsBase() {
             val dtType = currentDialectTest.dataTypeProvider.dateTimeType()
             val longType = currentDialectTest.dataTypeProvider.longType()
             val timeType = currentDialectTest.dataTypeProvider.timeType()
+            val varCharType = currentDialectTest.dataTypeProvider.varcharType(100)
             val q = db.identifierManager.quoteString
             val baseExpression = "CREATE TABLE " + addIfNotExistsIfSupported() +
                 "${"t".inProperCase()} (" +
                 "${"id".inProperCase()} ${currentDialectTest.dataTypeProvider.integerAutoincType()} PRIMARY KEY, " +
-                "${"s".inProperCase()} VARCHAR(100) DEFAULT 'test' NOT NULL, " +
-                "${"sn".inProperCase()} VARCHAR(100) DEFAULT 'testNullable' NULL, " +
+                "${"s".inProperCase()} $varCharType DEFAULT 'test' NOT NULL, " +
+                "${"sn".inProperCase()} $varCharType DEFAULT 'testNullable' NULL, " +
                 "${"l".inProperCase()} ${currentDialectTest.dataTypeProvider.longType()} DEFAULT 42 NOT NULL, " +
                 "$q${"c".inProperCase()}$q CHAR DEFAULT 'X' NOT NULL, " +
                 "${"t1".inProperCase()} $dtType ${currentDT.itOrNull()}, " +
@@ -221,12 +253,12 @@ class DefaultsTest : DatabaseTestsBase() {
                 "${"t5".inProperCase()} $dtType ${tsLiteral.itOrNull()}, " +
                 "${"t6".inProperCase()} $dtType ${tsLiteral.itOrNull()}, " +
                 "${"t7".inProperCase()} $longType ${durLiteral.itOrNull()}, " +
-                "${"t8".inProperCase()} $longType ${durLiteral.itOrNull()}" +
-//                "${"t9".inProperCase()} $timeType ${tLiteral.itOrNull()}, " +
-//                "${"t10".inProperCase()} $timeType ${tLiteral.itOrNull()}" +
+                "${"t8".inProperCase()} $longType ${durLiteral.itOrNull()}, " +
+                "${"t9".inProperCase()} $timeType ${tLiteral.itOrNull()}, " +
+                "${"t10".inProperCase()} $timeType ${tLiteral.itOrNull()}" +
                 ")"
 
-            val expected = if (currentDialectTest is OracleDialect) {
+            val expected = if (currentDialectTest is OracleDialect || currentDialectTest.h2Mode == H2Dialect.H2CompatibilityMode.Oracle) {
                 arrayListOf("CREATE SEQUENCE t_id_seq START WITH 1 MINVALUE 1 MAXVALUE 9223372036854775807", baseExpression)
             } else {
                 arrayListOf(baseExpression)
@@ -247,8 +279,8 @@ class DefaultsTest : DatabaseTestsBase() {
             assertEquals(tsConstValue, row1[TestTable.t6])
             assertEquals(durConstValue, row1[TestTable.t7])
             assertEquals(durConstValue, row1[TestTable.t8])
-//            assertEquals(tmConstValue, row1[TestTable.t9])
-//            assertEquals(tmConstValue, row1[TestTable.t10])
+            assertEquals(tmConstValue, row1[TestTable.t9])
+            assertEquals(tmConstValue, row1[TestTable.t10])
         }
     }
 

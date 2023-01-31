@@ -1,6 +1,5 @@
 package org.jetbrains.exposed.spring
 
-import org.jetbrains.exposed.sql.DEFAULT_REPETITION_ATTEMPTS
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.DatabaseConfig
 import org.jetbrains.exposed.sql.StdOutSqlLogger
@@ -9,7 +8,6 @@ import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.exposedLogger
 import org.jetbrains.exposed.sql.statements.api.ExposedConnection
 import org.jetbrains.exposed.sql.statements.jdbc.JdbcConnectionImpl
-import org.jetbrains.exposed.sql.transactions.DEFAULT_READ_ONLY
 import org.jetbrains.exposed.sql.transactions.TransactionInterface
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.springframework.jdbc.datasource.ConnectionHolder
@@ -22,19 +20,19 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import javax.sql.DataSource
 
 class SpringTransactionManager(
-    _dataSource: DataSource,
-    databaseConfig: DatabaseConfig = DatabaseConfig{ },
+    dataSource: DataSource,
+    databaseConfig: DatabaseConfig = DatabaseConfig { },
     private val showSql: Boolean = false,
-    @Volatile override var defaultReadOnly: Boolean = DEFAULT_READ_ONLY,
-    @Volatile override var defaultRepetitionAttempts: Int = DEFAULT_REPETITION_ATTEMPTS
-) : DataSourceTransactionManager(_dataSource), TransactionManager {
+    @Volatile override var defaultReadOnly: Boolean = databaseConfig.defaultReadOnly,
+    @Volatile override var defaultRepetitionAttempts: Int = databaseConfig.defaultRepetitionAttempts
+) : DataSourceTransactionManager(dataSource), TransactionManager {
 
     init {
         this.isRollbackOnCommitFailure = true
     }
 
     private val db = Database.connect(
-        datasource = _dataSource,
+        datasource = dataSource,
         databaseConfig = databaseConfig
     ) { this }
 

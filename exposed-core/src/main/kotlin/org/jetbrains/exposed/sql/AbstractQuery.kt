@@ -18,6 +18,9 @@ abstract class AbstractQuery<T : AbstractQuery<T>>(targets: List<Table>) : Sized
     var fetchSize: Int? = null
         private set
 
+    private var aliasMapping: Boolean = true
+        private set
+
     abstract val set: FieldSet
 
     protected fun copyTo(other: AbstractQuery<T>) {
@@ -37,6 +40,10 @@ abstract class AbstractQuery<T : AbstractQuery<T>>(targets: List<Table>) : Sized
     }
 
     abstract fun withDistinct(value: Boolean = true): T
+
+    fun withoutAlias() = apply {
+        aliasMapping = false
+    }
 
     override fun limit(n: Int, offset: Long): T = apply {
         limit = n
@@ -58,7 +65,7 @@ abstract class AbstractQuery<T : AbstractQuery<T>>(targets: List<Table>) : Sized
     protected abstract val queryToExecute: Statement<ResultSet>
 
     override fun iterator(): Iterator<ResultRow> {
-        val resultIterator = ResultIterator(transaction.exec(queryToExecute)!!)
+        val resultIterator = ResultIterator(transaction.exec(queryToExecute)!!, aliasMapping)
         return if (transaction.db.supportsMultipleResultSets) {
             resultIterator
         } else {
@@ -66,7 +73,7 @@ abstract class AbstractQuery<T : AbstractQuery<T>>(targets: List<Table>) : Sized
         }
     }
 
-    private inner class ResultIterator(val rs: ResultSet) : Iterator<ResultRow> {
+    private inner class ResultIterator(val rs: ResultSet, val removeAlias: Boolean) : Iterator<ResultRow> {
         private var hasNext = false
             set(value) {
                 field = value
@@ -76,7 +83,17 @@ abstract class AbstractQuery<T : AbstractQuery<T>>(targets: List<Table>) : Sized
                 }
             }
 
-        private val fieldsIndex = set.realFields.toSet().mapIndexed { index, expression -> expression to index }.toMap()
+        private val fieldsIndex = set.realFields.toSet().mapIndexed { index, expression ->
+            when {
+                removeAlias.not() && expression is Column && expression.table is Alias<*> -> {
+                    val delegate = (expression.table as Alias<*>).delegate
+                    delegate.columns.singleOrNull {
+                        delegate == it.table && expression.name == it.name
+                    }?.let { it to index } ?: kotlin.run { expression to index }
+                }
+                else -> expression to index
+            }
+        }.toMap()
 
         init {
             hasNext = rs.next()

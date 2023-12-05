@@ -105,6 +105,7 @@ public abstract class org/jetbrains/exposed/sql/AbstractQuery : org/jetbrains/ex
 	protected final fun setLimit (Ljava/lang/Integer;)V
 	public abstract fun withDistinct (Z)Lorg/jetbrains/exposed/sql/AbstractQuery;
 	public static synthetic fun withDistinct$default (Lorg/jetbrains/exposed/sql/AbstractQuery;ZILjava/lang/Object;)Lorg/jetbrains/exposed/sql/AbstractQuery;
+	public final fun withoutAlias ()Lorg/jetbrains/exposed/sql/AbstractQuery;
 }
 
 public final class org/jetbrains/exposed/sql/AbstractQuery$Companion {
@@ -3119,6 +3120,20 @@ public final class org/jetbrains/exposed/sql/vendors/ColumnMetadata {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class org/jetbrains/exposed/sql/vendors/DB2Dialect : org/jetbrains/exposed/sql/vendors/VendorDialect {
+	public static final field Companion Lorg/jetbrains/exposed/sql/vendors/DB2Dialect$Companion;
+	public static final field dialectName Ljava/lang/String;
+	public fun <init> ()V
+	public fun getFunctionProvider ()Lorg/jetbrains/exposed/sql/vendors/FunctionProvider;
+	public fun getName ()Ljava/lang/String;
+	public fun getSupportsIfNotExists ()Z
+	public fun getSupportsOnlyIdentifiersInGeneratedKeys ()Z
+	public fun isAllowedAsColumnDefault (Lorg/jetbrains/exposed/sql/Expression;)Z
+}
+
+public final class org/jetbrains/exposed/sql/vendors/DB2Dialect$Companion {
+}
+
 public abstract class org/jetbrains/exposed/sql/vendors/DataTypeProvider {
 	public fun <init> ()V
 	public abstract fun binaryType ()Ljava/lang/String;
@@ -3128,6 +3143,7 @@ public abstract class org/jetbrains/exposed/sql/vendors/DataTypeProvider {
 	public fun booleanToStatementString (Z)Ljava/lang/String;
 	public fun booleanType ()Ljava/lang/String;
 	public fun byteType ()Ljava/lang/String;
+	public fun dateTimeAutoInc ()Ljava/lang/String;
 	public fun dateTimeType ()Ljava/lang/String;
 	public fun dateType ()Ljava/lang/String;
 	public fun doubleType ()Ljava/lang/String;
@@ -3141,6 +3157,7 @@ public abstract class org/jetbrains/exposed/sql/vendors/DataTypeProvider {
 	public fun longAutoincType ()Ljava/lang/String;
 	public fun longType ()Ljava/lang/String;
 	public fun mediumTextType ()Ljava/lang/String;
+	public fun nullableType ()Ljava/lang/String;
 	public fun precessOrderByClause (Lorg/jetbrains/exposed/sql/QueryBuilder;Lorg/jetbrains/exposed/sql/Expression;Lorg/jetbrains/exposed/sql/SortOrder;)V
 	public fun processForDefaultValue (Lorg/jetbrains/exposed/sql/Expression;)Ljava/lang/String;
 	public fun shortType ()Ljava/lang/String;

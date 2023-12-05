@@ -10,6 +10,8 @@ internal object DB2DataTypeProvider : DataTypeProvider() {
 
     override fun dateTimeType(): String = "TIMESTAMP"
 
+    override fun hexToDb(hexString: String): String = """E'\\x$hexString'"""
+
     override fun ulongType(): String = "BIGINT"
 
     override fun textType(): String = "VARCHAR(32704)"

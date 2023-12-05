@@ -79,8 +79,21 @@ fun Project.configurePublishing() {
 
     publishing {
         publications {
-            create<MavenPublication>("exposed") {
-                groupId = "org.jetbrains.exposed"
+//            create<MavenPublication>("exposed") {
+//                groupId = "org.jetbrains.exposed"
+//                artifactId = project.name
+//
+//                setVersion(version)
+//
+//                from(components["java"])
+//                pom {
+//                    configureMavenCentralMetadata(project)
+//                }
+//                signPublicationIfKeyPresent(project)
+//            }
+
+            create<MavenPublication>("ToninelliLibJars") {
+                groupId = "toninelli"
                 artifactId = project.name
 
                 setVersion(version)
@@ -89,7 +102,6 @@ fun Project.configurePublishing() {
                 pom {
                     configureMavenCentralMetadata(project)
                 }
-                signPublicationIfKeyPresent(project)
             }
         }
 
@@ -97,12 +109,25 @@ fun Project.configurePublishing() {
         val publishingPassword: String? = System.getenv("PUBLISHING_PASSWORD")
 
         repositories {
+//            maven {
+//                name = "Exposed"
+//                url = uri("https://maven.pkg.jetbrains.space/public/p/exposed/release")
+//                credentials {
+//                    username = publishingUsername
+//                    password = publishingPassword
+//                }
+//            }
+
             maven {
-                name = "Exposed"
-                url = uri("https://maven.pkg.jetbrains.space/public/p/exposed/release")
+                // change URLs to point to your repos, e.g. http://my.org/repo
+                name = "ToninelliRepo"
+                val releasesRepoUrl = uri("http://repo.toninelli.it/repository/maven-releases/")
+                isAllowInsecureProtocol = true
+                url = releasesRepoUrl
+
                 credentials {
-                    username = publishingUsername
-                    password = publishingPassword
+                    username = "admin"
+                    password = "lerak217"
                 }
             }
         }

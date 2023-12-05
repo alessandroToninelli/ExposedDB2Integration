@@ -24,6 +24,8 @@ abstract class DataTypeProvider {
      */
     open fun ubyteType(): String = "SMALLINT"
 
+    open fun nullableType(): String = ""
+
     /** Numeric type for storing 2-byte integers. */
     open fun shortType(): String = "SMALLINT"
 
@@ -47,6 +49,9 @@ abstract class DataTypeProvider {
 
     /** Numeric type for storing 8-byte integers. */
     open fun longType(): String = "BIGINT"
+
+
+    open fun dateTimeAutoInc(): String = ""
 
     /** Numeric type for storing 8-byte unsigned integers. */
     open fun ulongType(): String = "BIGINT"
@@ -142,6 +147,7 @@ abstract class DataTypeProvider {
         e is Function<*> -> "$e"
         currentDialect is MysqlDialect -> "$e"
         currentDialect is SQLServerDialect -> "$e"
+        currentDialect is DB2Dialect -> "$e"
         else -> "($e)"
     }
 

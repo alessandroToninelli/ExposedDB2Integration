@@ -4,6 +4,7 @@ import org.jetbrains.exposed.crypt.Algorithms
 import org.jetbrains.exposed.crypt.encryptedBinary
 import org.jetbrains.exposed.crypt.encryptedVarchar
 import org.jetbrains.exposed.dao.id.IntIdTable
+import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.exceptions.UnsupportedByDialectException
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.tests.DatabaseTestsBase
@@ -59,7 +60,7 @@ class UpdateTests : DatabaseTestsBase() {
 
     @Test
     fun testUpdateWithLimit02() {
-        val dialects = TestDB.values().toList() - notSupportLimit
+        val dialects = TestDB.entries - notSupportLimit
         withCitiesAndUsers(dialects) { _, users, _ ->
             expectException<UnsupportedByDialectException> {
                 users.update({ users.id like "a%" }, 1) {
@@ -84,6 +85,7 @@ class UpdateTests : DatabaseTestsBase() {
             }
         }
     }
+
     @Test
     fun testUpdateWithJoin02() {
         withCitiesAndUsers(exclude = TestDB.allH2TestDB + TestDB.SQLITE) { cities, users, userData ->
@@ -96,6 +98,44 @@ class UpdateTests : DatabaseTestsBase() {
             join.selectAll().forEach {
                 assertEquals(it[users.name], it[userData.comment])
                 assertEquals(123, it[userData.value])
+            }
+        }
+    }
+
+    @Test
+    fun testUpdateWithJoinAndWhere() {
+        val tableA = object : LongIdTable("test_table_a") {
+            val foo = varchar("foo", 255)
+        }
+        val tableB = object : LongIdTable("test_table_b") {
+            val bar = varchar("bar", 255)
+            val tableAId = reference("table_a_id", tableA)
+        }
+
+        val supportWhere = TestDB.entries - TestDB.allH2TestDB - TestDB.SQLITE + TestDB.H2_ORACLE
+
+        withTables(tableA, tableB) { testingDb ->
+            val aId = tableA.insertAndGetId { it[foo] = "foo" }
+            tableB.insert {
+                it[bar] = "zip"
+                it[tableAId] = aId
+            }
+
+            val join = tableA.innerJoin(tableB)
+
+            if (testingDb in supportWhere) {
+                join.update({ tableA.foo eq "foo" }) {
+                    it[tableB.bar] = "baz"
+                }
+                join.selectAll().single().also {
+                    assertEquals("baz", it[tableB.bar])
+                }
+            } else {
+                expectException<UnsupportedByDialectException> {
+                    join.update({ tableA.foo eq "foo" }) {
+                        it[tableB.bar] = "baz"
+                    }
+                }
             }
         }
     }

@@ -1,12 +1,16 @@
 package org.jetbrains.exposed.sql.tests.shared.ddl
 
+import org.jetbrains.exposed.dao.id.IdTable
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.dao.id.LongIdTable
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.tests.DatabaseTestsBase
 import org.jetbrains.exposed.sql.tests.TestDB
 import org.jetbrains.exposed.sql.tests.currentDialectTest
 import org.jetbrains.exposed.sql.tests.inProperCase
+import org.jetbrains.exposed.sql.tests.shared.Category
+import org.jetbrains.exposed.sql.tests.shared.Item
 import org.jetbrains.exposed.sql.tests.shared.assertEqualCollections
 import org.jetbrains.exposed.sql.tests.shared.assertEquals
 import org.jetbrains.exposed.sql.tests.shared.assertTrue
@@ -33,6 +37,107 @@ class CreateTableTests : DatabaseTestsBase() {
             assertFails(assertionFailureMessage) {
                 SchemaUtils.create(TableDuplicatedColumnRefereToTable)
             }
+        }
+    }
+
+    @Test
+    fun testCreateIdTableWithPrimaryKeyByEntityID() {
+        val testTable = object : IdTable<String>("test_table") {
+            val column1 = varchar("column_1", 30)
+            override val id = column1.entityId()
+
+            override val primaryKey = PrimaryKey(id)
+        }
+
+        withDb {
+            val singleColumnDescription = testTable.columns.single().descriptionDdl(false)
+
+            assertTrue(singleColumnDescription.contains("PRIMARY KEY"))
+            assertEquals(
+                "CREATE TABLE " + addIfNotExistsIfSupported() + testTable.tableName.inProperCase() + " (" +
+                    singleColumnDescription +
+                    ")",
+                testTable.ddl
+            )
+        }
+    }
+
+    @Test
+    fun testCreateIdTableWithPrimaryKeyByColumn() {
+        val testTable = object : IdTable<String>("test_table") {
+            val column1 = varchar("column_1", 30)
+            override val id = column1.entityId()
+
+            override val primaryKey = PrimaryKey(column1)
+        }
+
+        withDb {
+            val singleColumnDescription = testTable.columns.single().descriptionDdl(false)
+
+            assertTrue(singleColumnDescription.contains("PRIMARY KEY"))
+            assertEquals(
+                "CREATE TABLE " + addIfNotExistsIfSupported() + testTable.tableName.inProperCase() + " (" +
+                    singleColumnDescription +
+                    ")",
+                testTable.ddl
+            )
+        }
+    }
+
+    @Test
+    fun testCreateIdTableWithNamedPrimaryKeyByColumn() {
+        val pkConstraintName = "PK_Constraint_name"
+        val testTable = object : IdTable<String>("test_table") {
+            val column1 = varchar("column_1", 30)
+            override val id = column1.entityId()
+
+            override val primaryKey = PrimaryKey(column1, name = pkConstraintName)
+        }
+
+        withDb {
+            val singleColumn = testTable.columns.single()
+
+            assertEquals(
+                "CREATE TABLE " + addIfNotExistsIfSupported() + testTable.tableName.inProperCase() + " (" +
+                    "${singleColumn.descriptionDdl(false)}, " +
+                    "CONSTRAINT $pkConstraintName PRIMARY KEY (${singleColumn.name.inProperCase()})" +
+                    ")",
+                testTable.ddl
+            )
+        }
+    }
+
+    @Test
+    fun testCreateTableWithSingleColumnPrimaryKey() {
+        val stringPKTable = object : Table("string_pk_table") {
+            val column1 = varchar("column_1", 30)
+
+            override val primaryKey = PrimaryKey(column1)
+        }
+        val intPKTable = object : Table("int_pk_table") {
+            val column1 = integer("column_1")
+
+            override val primaryKey = PrimaryKey(column1)
+        }
+
+        withDb {
+            val stringColumnDescription = stringPKTable.columns.single().descriptionDdl(false)
+            val intColumnDescription = intPKTable.columns.single().descriptionDdl(false)
+
+            assertTrue(stringColumnDescription.contains("PRIMARY KEY"))
+            assertTrue(intColumnDescription.contains("PRIMARY KEY"))
+            assertEquals(
+                "CREATE TABLE " + addIfNotExistsIfSupported() + stringPKTable.tableName.inProperCase() + " (" +
+                    stringColumnDescription +
+                    ")",
+                stringPKTable.ddl
+            )
+            assertEquals(
+                "CREATE TABLE " + addIfNotExistsIfSupported() + intPKTable.tableName.inProperCase() + " (" +
+                    intColumnDescription +
+                    ")",
+                intPKTable.ddl
+            )
         }
     }
 
@@ -134,7 +239,10 @@ class CreateTableTests : DatabaseTestsBase() {
             assertEquals("ALTER TABLE $tableProperName ADD ${Person.id1.descriptionDdl(false)}", ddlId1.first())
 
             assertEquals(1, ddlId2.size)
-            assertEquals("ALTER TABLE $tableProperName ADD ${Person.id2.descriptionDdl(false)}, ADD CONSTRAINT $pkConstraintName PRIMARY KEY ($id1ProperName, $id2ProperName)", ddlId2.first())
+            assertEquals(
+                "ALTER TABLE $tableProperName ADD ${Person.id2.descriptionDdl(false)}, ADD CONSTRAINT $pkConstraintName PRIMARY KEY ($id1ProperName, $id2ProperName)",
+                ddlId2.first()
+            )
         }
     }
 
@@ -231,17 +339,14 @@ class CreateTableTests : DatabaseTestsBase() {
                 onDelete = ReferenceOption.NO_ACTION,
             )
         }
-        withTables(excludeSettings = listOf(TestDB.H2_ORACLE), parent, child) {
-            // Different dialects use different mix of lowercase/uppercase in their names
-            val expected = listOf(
-                "CREATE TABLE " + addIfNotExistsIfSupported() + "${this.identity(child)} (" +
-                    "${child.columns.joinToString { it.descriptionDdl(false) }}," +
-                    " CONSTRAINT ${"fk_Child_parent_id__id".inProperCase()}" +
-                    " FOREIGN KEY (${this.identity(child.parentId)})" +
-                    " REFERENCES ${this.identity(parent)}(${this.identity(parent.id)})" +
-                    ")"
-            )
-            assertEqualCollections(child.ddl, expected)
+        withTables(parent, child) {
+            val expected = "CREATE TABLE " + addIfNotExistsIfSupported() + "${this.identity(child)} (" +
+                "${child.columns.joinToString { it.descriptionDdl(false) }}," +
+                " CONSTRAINT ${"fk_Child_parent_id__id".inProperCase()}" +
+                " FOREIGN KEY (${this.identity(child.parentId)})" +
+                " REFERENCES ${this.identity(parent)}(${this.identity(parent.id)})" +
+                ")"
+            assertEquals(child.ddl.last(), expected)
         }
     }
 
@@ -256,17 +361,14 @@ class CreateTableTests : DatabaseTestsBase() {
                 onDelete = ReferenceOption.NO_ACTION,
             )
         }
-        withTables(excludeSettings = listOf(TestDB.H2_ORACLE), parent, child) {
-            // Different dialects use different mix of lowercase/uppercase in their names
-            val expected = listOf(
-                "CREATE TABLE " + addIfNotExistsIfSupported() + "${this.identity(child)} (" +
-                    "${child.columns.joinToString { it.descriptionDdl(false) }}," +
-                    " CONSTRAINT ${"fk_Child2_parent_id__id".inProperCase()}" +
-                    " FOREIGN KEY (${this.identity(child.parentId)})" +
-                    " REFERENCES ${this.identity(parent)}(${this.identity(parent.id)})" +
-                    ")"
-            )
-            assertEqualCollections(child.ddl, expected)
+        withTables(parent, child) {
+            val expected = "CREATE TABLE " + addIfNotExistsIfSupported() + "${this.identity(child)} (" +
+                "${child.columns.joinToString { it.descriptionDdl(false) }}," +
+                " CONSTRAINT ${"fk_Child2_parent_id__id".inProperCase()}" +
+                " FOREIGN KEY (${this.identity(child.parentId)})" +
+                " REFERENCES ${this.identity(parent)}(${this.identity(parent.id)})" +
+                ")"
+            assertEquals(child.ddl.last(), expected)
         }
     }
 
@@ -346,7 +448,7 @@ class CreateTableTests : DatabaseTestsBase() {
     fun createTableWithExplicitForeignKeyName4() {
         val fkName = "MyForeignKey4"
         val parent = object : LongIdTable() {
-            override val tableName = "parent4"
+            override val tableName get() = "parent4"
             val uniqueId = uuid("uniqueId").clientDefault { UUID.randomUUID() }.uniqueIndex()
         }
         val child = object : LongIdTable("child4") {
@@ -404,7 +506,7 @@ class CreateTableTests : DatabaseTestsBase() {
         }
         withTables(parent, child) { testDb ->
             val t = TransactionManager.current()
-            val updateCascadePart = if (testDb !in listOf(TestDB.ORACLE, TestDB.H2_ORACLE)) " ON UPDATE CASCADE" else ""
+            val updateCascadePart = if (testDb != TestDB.ORACLE) " ON UPDATE CASCADE" else ""
             val expected = listOfNotNull(
                 child.autoIncColumn?.autoIncColumnType?.autoincSeq?.let {
                     Sequence(
@@ -431,6 +533,7 @@ class CreateTableTests : DatabaseTestsBase() {
         val parent = object : Table("parent2") {
             val idA = integer("id_a")
             val idB = integer("id_b")
+
             init {
                 uniqueIndex(idA, idB)
             }
@@ -470,6 +573,23 @@ class CreateTableTests : DatabaseTestsBase() {
         }
     }
 
+    @Test
+    fun createTableWithOnDeleteSetDefault() {
+        withDb(excludeSettings = listOf(TestDB.MARIADB, TestDB.MYSQL, TestDB.ORACLE)) {
+            val expected = listOf(
+                "CREATE TABLE " + addIfNotExistsIfSupported() + "${this.identity(Item)} (" +
+                    "${Item.columns.joinToString { it.descriptionDdl(false) }}," +
+                    " CONSTRAINT ${"fk_Item_categoryId__id".inProperCase()}" +
+                    " FOREIGN KEY (${this.identity(Item.categoryId)})" +
+                    " REFERENCES ${this.identity(Category)}(${this.identity(Category.id)})" +
+                    " ON DELETE SET DEFAULT" +
+                    ")"
+            )
+
+            assertEqualCollections(Item.ddl, expected)
+        }
+    }
+
     object OneTable : IntIdTable("one")
     object OneOneTable : IntIdTable("one.one")
 
@@ -496,7 +616,8 @@ class CreateTableTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun `create table with quoted name with camel case`() {
+    @Test
+    fun `create table with quoted name with camel case`() {
         val testTable = object : IntIdTable("quotedTable") {
             val int = integer("intColumn")
         }
@@ -509,6 +630,38 @@ class CreateTableTests : DatabaseTestsBase() {
                 assertEquals(10, testTable.selectAll().singleOrNull()?.get(testTable.int))
             } finally {
                 SchemaUtils.drop(testTable)
+            }
+        }
+    }
+
+    /**
+     * Note on Oracle exclusion in this test:
+     * Oracle names are not case-sensitive. They can be made case-sensitive by using quotes around them. The Oracle JDBC
+     * driver converts the entire SQL INSERT statement to upper case before extracting the table name from it. This
+     * happens regardless of whether there is a dot in the name. Even when a name is quoted, the driver converts
+     * it to upper case. Therefore, the INSERT statement fails when it contains a quoted table name because it attempts
+     * to insert into a table that does not exist (“SOMENAMESPACE.SOMETABLE” is not found) . It does not fail when the
+     * table name is not quoted because the case would not matter in that scenario.
+     */
+    @Test
+    fun `create table with dot in name without creating schema beforehand`() {
+        withDb(excludeSettings = listOf(TestDB.ORACLE)) {
+            val q = db.identifierManager.quoteString
+            val tableName = "${q}SomeNamespace.SomeTable$q"
+
+            val tester = object : IntIdTable(tableName) {
+                val text_col = text("text_col")
+            }
+
+            try {
+                SchemaUtils.create(tester)
+                assertTrue(tester.exists())
+
+                val id = tester.insertAndGetId { it[text_col] = "Inserted text" }
+                tester.update({ tester.id eq id }) { it[text_col] = "Updated text" }
+                tester.deleteWhere { tester.id eq id }
+            } finally {
+                SchemaUtils.drop(tester)
             }
         }
     }

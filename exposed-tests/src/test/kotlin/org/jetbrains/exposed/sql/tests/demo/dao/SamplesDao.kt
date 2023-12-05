@@ -1,8 +1,8 @@
 package org.jetbrains.exposed.sql.tests.demo.dao
 
 import org.jetbrains.exposed.dao.*
-import org.jetbrains.exposed.dao.id.*
 import org.jetbrains.exposed.dao.id.EntityID
+import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.tests.TestDB
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -35,7 +35,7 @@ class City(id: EntityID<Int>) : IntEntity(id) {
 }
 
 fun main() {
-    Assume.assumeTrue(TestDB.H2 in TestDB.enabledInTests())
+    Assume.assumeTrue(TestDB.H2 in TestDB.enabledDialects())
     Database.connect("jdbc:h2:mem:test", driver = "org.h2.Driver", user = "root", password = "")
 
     transaction {
@@ -69,9 +69,9 @@ fun main() {
             age = 42
         }
 
-        println("Cities: ${City.all().joinToString {it.name}}")
-        println("Users in ${stPete.name}: ${stPete.users.joinToString {it.name}}")
-        println("Adults: ${User.find { Users.age greaterEq 18 }.joinToString {it.name}}")
+        println("Cities: ${City.all().joinToString { it.name }}")
+        println("Users in ${stPete.name}: ${stPete.users.joinToString { it.name }}")
+        println("Adults: ${User.find { Users.age greaterEq 18 }.joinToString { it.name }}")
     }
 }
 

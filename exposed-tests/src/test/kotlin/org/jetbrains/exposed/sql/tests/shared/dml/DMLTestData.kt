@@ -11,6 +11,7 @@ import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.tests.DatabaseTestsBase
 import org.jetbrains.exposed.sql.tests.TestDB
+import java.math.BigDecimal
 import java.util.*
 
 object DMLTestsData {
@@ -38,90 +39,129 @@ object DMLTestsData {
         val comment: Column<String> = varchar("comment", 30)
         val value: Column<Int> = integer("value")
     }
+
+    object Sales : Table() {
+        val year: Column<Int> = integer("year")
+        val month: Column<Int> = integer("month")
+        val product: Column<String?> = varchar("product", 30).nullable()
+        val amount: Column<BigDecimal> = decimal("amount", 8, 2)
+    }
 }
 
 @Suppress("LongMethod")
 fun DatabaseTestsBase.withCitiesAndUsers(
     exclude: List<TestDB> = emptyList(),
-    statement: Transaction.(cities: DMLTestsData.Cities, users: DMLTestsData.Users, userData: DMLTestsData.UserData) -> Unit
+    statement: Transaction.(
+        cities: DMLTestsData.Cities,
+        users: DMLTestsData.Users,
+        userData: DMLTestsData.UserData
+    ) -> Unit
 ) {
-    val Users = DMLTestsData.Users
-    val UserFlags = DMLTestsData.Users.Flags
-    val Cities = DMLTestsData.Cities
-    val UserData = DMLTestsData.UserData
+    val users = DMLTestsData.Users
+    val userFlags = DMLTestsData.Users.Flags
+    val cities = DMLTestsData.Cities
+    val userData = DMLTestsData.UserData
 
-    withTables(exclude, Cities, Users, UserData) {
-        val saintPetersburgId = Cities.insert {
+    withTables(exclude, cities, users, userData) {
+        val saintPetersburgId = cities.insert {
             it[name] = "St. Petersburg"
-        } get Cities.id
+        } get cities.id
 
-        val munichId = Cities.insert {
+        val munichId = cities.insert {
             it[name] = "Munich"
-        } get Cities.id
+        } get cities.id
 
-        Cities.insert {
+        cities.insert {
             it[name] = "Prague"
         }
 
-        Users.insert {
+        users.insert {
             it[id] = "andrey"
             it[name] = "Andrey"
             it[cityId] = saintPetersburgId
-            it[flags] = UserFlags.IS_ADMIN
+            it[flags] = userFlags.IS_ADMIN
         }
 
-        Users.insert {
+        users.insert {
             it[id] = "sergey"
             it[name] = "Sergey"
             it[cityId] = munichId
-            it[flags] = UserFlags.IS_ADMIN or UserFlags.HAS_DATA
+            it[flags] = userFlags.IS_ADMIN or userFlags.HAS_DATA
         }
 
-        Users.insert {
+        users.insert {
             it[id] = "eugene"
             it[name] = "Eugene"
             it[cityId] = munichId
-            it[flags] = UserFlags.HAS_DATA
+            it[flags] = userFlags.HAS_DATA
         }
 
-        Users.insert {
+        users.insert {
             it[id] = "alex"
             it[name] = "Alex"
             it[cityId] = null
         }
 
-        Users.insert {
+        users.insert {
             it[id] = "smth"
             it[name] = "Something"
             it[cityId] = null
-            it[flags] = UserFlags.HAS_DATA
+            it[flags] = userFlags.HAS_DATA
         }
 
-        UserData.insert {
+        userData.insert {
             it[user_id] = "smth"
             it[comment] = "Something is here"
             it[value] = 10
         }
 
-        UserData.insert {
+        userData.insert {
             it[user_id] = "smth"
             it[comment] = "Comment #2"
             it[value] = 20
         }
 
-        UserData.insert {
+        userData.insert {
             it[user_id] = "eugene"
             it[comment] = "Comment for Eugene"
             it[value] = 20
         }
 
-        UserData.insert {
+        userData.insert {
             it[user_id] = "sergey"
             it[comment] = "Comment for Sergey"
             it[value] = 30
         }
 
-        statement(Cities, Users, UserData)
+        statement(cities, users, userData)
+    }
+}
+
+fun DatabaseTestsBase.withSales(
+    statement: Transaction.(testDb: TestDB, sales: DMLTestsData.Sales) -> Unit
+) {
+    val sales = DMLTestsData.Sales
+
+    withTables(sales) {
+        insertSale(2018, 11, "tea", "550.10")
+        insertSale(2018, 12, "coffee", "1500.25")
+        insertSale(2018, 12, "tea", "900.30")
+        insertSale(2019, 1, "coffee", "1620.10")
+        insertSale(2019, 1, "tea", "650.70")
+        insertSale(2019, 2, "coffee", "1870.90")
+        insertSale(2019, 2, null, "10.20")
+
+        statement(it, sales)
+    }
+}
+
+private fun insertSale(year: Int, month: Int, product: String?, amount: String) {
+    val sales = DMLTestsData.Sales
+    sales.insert {
+        it[sales.year] = year
+        it[sales.month] = month
+        it[sales.product] = product
+        it[sales.amount] = BigDecimal(amount)
     }
 }
 

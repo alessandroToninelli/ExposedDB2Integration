@@ -1,4 +1,5 @@
 @file:OptIn(ExperimentalTime::class)
+@file:Suppress("MaximumLineLength", "LongMethod")
 
 package org.jetbrains.exposed.sql.kotlin.datetime
 
@@ -14,7 +15,6 @@ import org.jetbrains.exposed.sql.tests.currentDialectTest
 import org.jetbrains.exposed.sql.tests.shared.MiscTable
 import org.jetbrains.exposed.sql.tests.shared.checkInsert
 import org.jetbrains.exposed.sql.tests.shared.checkRow
-import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.junit.Test
 import java.math.BigDecimal
 import kotlin.test.assertEquals
@@ -252,10 +252,14 @@ class MiscTableTest : DatabaseTestsBase() {
         }
     }
 
+    // these DB take the datetime nanosecond value and round up to default precision
+    // which causes flaky comparison failures if not cast to TIMESTAMP first
+    private val requiresExplicitDTCast = listOf(TestDB.ORACLE, TestDB.H2_ORACLE, TestDB.H2_PSQL, TestDB.H2_SQLSERVER)
+
     @Test
     fun testSelect01() {
         val tbl = Misc
-        withTables(tbl) {
+        withTables(tbl) { testDb ->
             val date = today
             val dateTime = now()
             val time = dateTime.time
@@ -436,8 +440,12 @@ class MiscTableTest : DatabaseTestsBase() {
                 dblcn = null
             )
 
+            val dtValue = when (testDb) {
+                in requiresExplicitDTCast -> Cast(dateTimeParam(dateTime), KotlinLocalDateTimeColumnType())
+                else -> dateTimeParam(dateTime)
+            }
             tbl.checkRowFull(
-                tbl.select { tbl.dt.eq(dateTime) }.single(),
+                tbl.select { tbl.dt.eq(dtValue) }.single(),
                 by = 13,
                 byn = null,
                 sm = -10,
@@ -692,7 +700,7 @@ class MiscTableTest : DatabaseTestsBase() {
     @Test
     fun testSelect02() {
         val tbl = Misc
-        withTables(tbl) {
+        withTables(tbl) { testDb ->
             val date = today
             val dateTime = now()
             val time = dateTime.time
@@ -858,8 +866,12 @@ class MiscTableTest : DatabaseTestsBase() {
                 dblcn = 567.89
             )
 
+            val dtValue = when (testDb) {
+                in requiresExplicitDTCast -> Cast(dateTimeParam(dateTime), KotlinLocalDateTimeColumnType())
+                else -> dateTimeParam(dateTime)
+            }
             tbl.checkRowFull(
-                tbl.select { tbl.dt.eq(dateTime) }.single(),
+                tbl.select { tbl.dt.eq(dtValue) }.single(),
                 by = 13,
                 byn = 13,
                 sm = -10,
@@ -1242,7 +1254,7 @@ class MiscTableTest : DatabaseTestsBase() {
                 exec("INSERT IGNORE INTO `zerodatetimetable` (dt1,dt2,ts1,ts2) VALUES ('0000-00-00 00:00:00', '0000-00-00 00:00:00', '0000-00-00 00:00:00', '0000-00-00 00:00:00');")
                 val row = ZeroDateTimeTable.selectAll().first()
 
-                for (c in listOf(ZeroDateTimeTable.dt1, ZeroDateTimeTable.dt2, ZeroDateTimeTable.ts1, ZeroDateTimeTable.ts2)) {
+                listOf(ZeroDateTimeTable.dt1, ZeroDateTimeTable.dt2, ZeroDateTimeTable.ts1, ZeroDateTimeTable.ts2).forEach { c ->
                     val actual = row[c]
                     assertNull(actual, "$c expected null but was $actual")
                 }
@@ -1309,10 +1321,10 @@ fun Misc.checkRowDates(
     assertEquals(dn, row[this.dn])
     assertLocalTime(t, row[this.t])
     assertLocalTime(tn, row[this.tn])
-    assertEquals(dt, row[this.dt])
-    assertEquals(dtn, row[this.dtn])
-    assertEquals(ts, row[this.ts])
-    assertEquals(tsn, row[this.tsn])
+    assertEqualDateTime(dt, row[this.dt])
+    assertEqualDateTime(dtn, row[this.dtn])
+    assertEqualDateTime(ts, row[this.ts])
+    assertEqualDateTime(tsn, row[this.tsn])
     assertEquals(dr, row[this.dr])
     assertEquals(drn, row[this.drn])
 }

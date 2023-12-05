@@ -9,10 +9,20 @@ import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
 import java.util.*
 
+/**
+ * Represents the SQL statement that batch updates rows of a table.
+ *
+ * @param table Identity table to update values from.
+ */
 open class BatchUpdateStatement(val table: IdTable<*>) : UpdateStatement(table, null) {
+    /** The mappings of columns to update with their updated values for each entity in the batch. */
     val data = ArrayList<Pair<EntityID<*>, Map<Column<*>, Any?>>>()
     override val firstDataSet: List<Pair<Column<*>, Any?>> get() = data.first().second.toList()
 
+    /**
+     * Adds the specified entity [id] to the current list of update statements, using the mapping of columns to update
+     * provided for this `BatchUpdateStatement`.
+     */
     fun addBatch(id: EntityID<*>) {
         val lastBatch = data.lastOrNull()
         val different by lazy {
@@ -35,8 +45,8 @@ open class BatchUpdateStatement(val table: IdTable<*>) : UpdateStatement(table, 
 
     override fun <T, S : T?> update(column: Column<T>, value: Expression<S>) = error("Expressions unsupported in batch update")
 
-    override fun prepareSQL(transaction: Transaction): String =
-        "${super.prepareSQL(transaction)} WHERE ${transaction.identity(table.id)} = ?"
+    override fun prepareSQL(transaction: Transaction, prepared: Boolean): String =
+        "${super.prepareSQL(transaction, prepared)} WHERE ${transaction.identity(table.id)} = ?"
 
     override fun PreparedStatementApi.executeInternal(transaction: Transaction): Int = if (data.size == 1) executeUpdate() else executeBatch().sum()
 

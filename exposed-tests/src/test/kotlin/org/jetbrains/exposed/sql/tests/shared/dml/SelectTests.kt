@@ -1,5 +1,6 @@
 package org.jetbrains.exposed.sql.tests.shared.dml
 
+import nl.altindag.log.LogCaptor
 import org.jetbrains.exposed.crypt.Algorithms
 import org.jetbrains.exposed.crypt.encryptedBinary
 import org.jetbrains.exposed.crypt.encryptedVarchar
@@ -10,10 +11,62 @@ import org.jetbrains.exposed.sql.tests.TestDB
 import org.jetbrains.exposed.sql.tests.shared.assertEquals
 import org.jetbrains.exposed.sql.tests.shared.entities.EntityTests
 import org.junit.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertNull
 
 class SelectTests : DatabaseTestsBase() {
-    // select expressions
+    @Test
+    fun testMigrationToNewQueryDSL() {
+        withCitiesAndUsers { cities, _, _ ->
+            val logCaptor = LogCaptor.forName(exposedLogger.name)
+            logCaptor.setLogLevelToDebug()
+
+            // old query dsl
+            cities.slice(cities.name).select { cities.name eq "andrey" }.toList()
+            cities.slice(cities.name).select(Op.TRUE).toList()
+            cities.slice(cities.name).selectAll().toList()
+
+            cities.select { cities.name eq "andrey" }.toList()
+            cities.select(Op.TRUE).toList()
+            cities.selectAll().toList()
+
+            cities.slice(cities.name).selectBatched(50) { cities.name eq "andrey" }.toList()
+            cities.slice(cities.name).selectAllBatched(50).toList()
+            cities.selectBatched(50) { cities.name eq "andrey" }.toList()
+            cities.selectAllBatched(50).toList()
+
+            val originalQuery1 = cities.select { cities.name eq "andrey" }.also { it.toList() }
+            originalQuery1.adjustSlice { slice(cities.name) }.toList()
+
+            val sqlLoggedWithOldDSL = logCaptor.debugLogs.toList()
+            logCaptor.clearLogs()
+
+            // new query dsl
+            cities.select(cities.name).where { cities.name eq "andrey" }.toList()
+            cities.select(cities.name).where(Op.TRUE).toList()
+            cities.select(cities.name).toList()
+
+            cities.selectAll().where { cities.name eq "andrey" }.toList()
+            cities.selectAll().where(Op.TRUE).toList()
+            cities.selectAll().toList()
+
+            cities.select(cities.name).where { cities.name eq "andrey" }.fetchBatchedResults(50).toList()
+            cities.select(cities.name).fetchBatchedResults(50).toList()
+            cities.selectAll().where { cities.name eq "andrey" }.fetchBatchedResults(50).toList()
+            cities.selectAll().fetchBatchedResults(50).toList()
+
+            val originalQuery2 = cities.selectAll().where { cities.name eq "andrey" }.also { it.toList() }
+            originalQuery2.adjustSelect { select(cities.name).set }.toList()
+
+            val sqlLoggedWithNewDSL = logCaptor.debugLogs.toList()
+            logCaptor.clearLogs()
+            logCaptor.resetLogLevel()
+            logCaptor.close()
+
+            assertContentEquals(sqlLoggedWithOldDSL, sqlLoggedWithNewDSL)
+        }
+    }
+
     @Test
     fun testSelect() {
         withCitiesAndUsers { _, users, _ ->
@@ -77,7 +130,7 @@ class SelectTests : DatabaseTestsBase() {
             assertEquals(0L, cities.select { cities.name eq "Qwertt" }.count())
             assertEquals(3L, cities.selectAll().count())
             val cityID: Int? = null
-            assertEquals(2L, users.select{ users.cityId eq cityID } .count())
+            assertEquals(2L, users.select { users.cityId eq cityID }.count())
         }
     }
 
@@ -246,8 +299,8 @@ class SelectTests : DatabaseTestsBase() {
 
     @Test
     fun `test select on nullable reference column`() {
-        val firstTable = object : IntIdTable("first") {}
-        val secondTable = object : IntIdTable("second") {
+        val firstTable = object : IntIdTable("firstTable") {}
+        val secondTable = object : IntIdTable("secondTable") {
             val firstOpt = optReference("first", firstTable)
         }
 
@@ -284,7 +337,7 @@ class SelectTests : DatabaseTestsBase() {
     }
 
     @Test
-    fun `test encryptedColumnType with a string`() {
+    fun testEncryptedColumnTypeWithAString() {
         val stringTable = object : IntIdTable("StringTable") {
             val name = encryptedVarchar("name", 80, Algorithms.AES_256_PBE_CBC("passwd", "5c0744940b5c369b"))
             val city = encryptedBinary("city", 80, Algorithms.AES_256_PBE_GCM("passwd", "5c0744940b5c369b"))

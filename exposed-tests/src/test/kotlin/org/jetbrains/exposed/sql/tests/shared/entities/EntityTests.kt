@@ -11,9 +11,12 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.statements.api.ExposedBlob
 import org.jetbrains.exposed.sql.tests.DatabaseTestsBase
 import org.jetbrains.exposed.sql.tests.TestDB
+import org.jetbrains.exposed.sql.tests.currentDialectTest
 import org.jetbrains.exposed.sql.tests.shared.*
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.inTopLevelTransaction
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.vendors.OracleDialect
 import org.junit.Test
 import java.sql.Connection
 import java.util.*
@@ -87,12 +90,15 @@ object EntityTestsData {
         var x by YTable.x
         val b: BEntity? by BEntity.backReferencedOn(XTable.y1)
         var content by YTable.blob
+
         companion object : EntityClass<String, YEntity>(YTable)
     }
 }
 
+@Suppress("LargeClass")
 class EntityTests : DatabaseTestsBase() {
-    @Test fun testDefaults01() {
+    @Test
+    fun testDefaults01() {
         withTables(EntityTestsData.YTable, EntityTestsData.XTable) {
             val x = EntityTestsData.XEntity.new { }
             assertEquals(x.b1, true, "b1 mismatched")
@@ -100,7 +106,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun testDefaults02() {
+    @Test
+    fun testDefaults02() {
         withTables(EntityTestsData.YTable, EntityTestsData.XTable) {
             val a: EntityTestsData.AEntity = EntityTestsData.AEntity.create(false, EntityTestsData.XType.A)
             val b: EntityTestsData.BEntity = EntityTestsData.AEntity.create(false, EntityTestsData.XType.B) as EntityTestsData.BEntity
@@ -117,7 +124,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun testBlobField() {
+    @Test
+    fun testBlobField() {
         withTables(EntityTestsData.YTable) {
             val y1 = EntityTestsData.YEntity.new {
                 x = false
@@ -138,7 +146,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun testTextFieldOutsideTheTransaction() {
+    @Test
+    fun testTextFieldOutsideTheTransaction() {
         val objectsToVerify = arrayListOf<Pair<Human, TestDB>>()
         withTables(Humans) { testDb ->
             val y1 = Human.new {
@@ -155,7 +164,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun testNewWithIdAndRefresh() {
+    @Test
+    fun testNewWithIdAndRefresh() {
         val objectsToVerify = arrayListOf<Pair<Human, TestDB>>()
         withTables(listOf(TestDB.SQLSERVER), Humans) { testDb ->
             val x = Human.new(2) {
@@ -365,12 +375,65 @@ class EntityTests : DatabaseTestsBase() {
             val board2 = Board.new { name = "irrelevant2" }
             assertNotNull(Board.testCache(board2.id))
             Boards.update({ Boards.id eq board2.id }) {
-                it[Boards.name] = "relevant2"
+                it[name] = "relevant2"
             }
             assertNull(Board.testCache(board2.id))
             board2.refresh(flush = false)
             assertNotNull(Board.testCache(board2.id))
             assertEquals("relevant2", board2.name)
+        }
+    }
+
+    object Items : IntIdTable("items") {
+        val name = varchar("name", 255).uniqueIndex()
+        val price = double("price")
+    }
+
+    class Item(id: EntityID<Int>) : IntEntity(id) {
+        companion object : IntEntityClass<Item>(Items)
+
+        var name by Items.name
+        var price by Items.price
+    }
+
+    @Test
+    fun testCacheInvalidatedOnDSLUpsert() {
+        withTables(Items) { testDb ->
+            excludingH2Version1(testDb) {
+                val oldPrice = 20.0
+                val itemA = Item.new {
+                    name = "Item A"
+                    price = oldPrice
+                }
+                assertEquals(oldPrice, itemA.price)
+                assertNotNull(Item.testCache(itemA.id))
+
+                val newPrice = 50.0
+                val conflictKeys = if (testDb in TestDB.mySqlRelatedDB) emptyArray<Column<*>>() else arrayOf(Items.name)
+                Items.upsert(*conflictKeys) {
+                    it[name] = itemA.name
+                    it[price] = newPrice
+                }
+                assertEquals(oldPrice, itemA.price)
+                assertNull(Item.testCache(itemA.id))
+
+                itemA.refresh(flush = false)
+                assertEquals(newPrice, itemA.price)
+                assertNotNull(Item.testCache(itemA.id))
+
+                val newPricePlusExtra = 100.0
+                val newItems = List(5) { i -> "Item ${'A' + i}" to newPricePlusExtra }
+                Items.batchUpsert(newItems, *conflictKeys, shouldReturnGeneratedValues = false) { (name, price) ->
+                    this[Items.name] = name
+                    this[Items.price] = price
+                }
+                assertEquals(newPrice, itemA.price)
+                assertNull(Item.testCache(itemA.id))
+
+                itemA.refresh(flush = false)
+                assertEquals(newPricePlusExtra, itemA.price)
+                assertNotNull(Item.testCache(itemA.id))
+            }
         }
     }
 
@@ -385,6 +448,7 @@ class EntityTests : DatabaseTestsBase() {
 
     open class Human(id: EntityID<Int>) : IntEntity(id) {
         companion object : IntEntityClass<Human>(Humans)
+
         var h by Humans.h
     }
 
@@ -456,7 +520,8 @@ class EntityTests : DatabaseTestsBase() {
     }
 
     // https://github.com/JetBrains/Exposed/issues/439
-    @Test fun callLimitOnRelationDoesntMutateTheCachedValue() {
+    @Test
+    fun callLimitOnRelationDoesntMutateTheCachedValue() {
         withTables(Posts) {
             val category1 = Category.new {
                 title = "cat1"
@@ -481,7 +546,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun testOrderByOnEntities() {
+    @Test
+    fun testOrderByOnEntities() {
         withTables(Categories) {
             Categories.deleteAll()
             val category1 = Category.new { title = "Test1" }
@@ -494,7 +560,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun `test what update of inserted entities goes before an insert`() {
+    @Test
+    fun `test what update of inserted entities goes before an insert`() {
         withTables(Categories, Posts) {
             val category1 = Category.new {
                 title = "category1"
@@ -532,6 +599,7 @@ class EntityTests : DatabaseTestsBase() {
 
     class Parent(id: EntityID<Long>) : LongEntity(id) {
         companion object : LongEntityClass<Parent>(Parents)
+
         var name by Parents.name
     }
 
@@ -542,11 +610,13 @@ class EntityTests : DatabaseTestsBase() {
 
     class Child(id: EntityID<Long>) : LongEntity(id) {
         companion object : LongEntityClass<Child>(Children)
+
         var parent by Parent referencedOn Children.companyId
         var name by Children.name
     }
 
-    @Test fun `test new(id) with get`() {
+    @Test
+    fun `test new(id) with get`() {
         // SQL Server doesn't support an explicit id for auto-increment table
         withTables(listOf(TestDB.SQLSERVER), Parents, Children) {
             val parentId = Parent.new {
@@ -565,7 +635,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun `newly created entity flushed successfully`() {
+    @Test
+    fun `newly created entity flushed successfully`() {
         withTables(Boards) {
             val board = Board.new { name = "Board1" }.apply {
                 assertEquals(true, flush())
@@ -576,16 +647,19 @@ class EntityTests : DatabaseTestsBase() {
     }
 
     private fun <T> newTransaction(statement: Transaction.() -> T) =
-        inTopLevelTransaction(TransactionManager.manager.defaultIsolationLevel, 1, false, null, null, statement)
+        inTopLevelTransaction(TransactionManager.manager.defaultIsolationLevel, false, null, null, statement)
 
-    @Test fun sharingEntityBetweenTransactions() {
+    @Test
+    fun sharingEntityBetweenTransactions() {
         withTables(Humans) {
             val human1 = newTransaction {
+                repetitionAttempts = 1
                 Human.new {
                     this.h = "foo"
                 }
             }
             newTransaction {
+                repetitionAttempts = 1
                 assertEquals(null, Human.testCache(human1.id))
                 assertEquals("foo", Humans.selectAll().single()[Humans.h])
                 human1.h = "bar"
@@ -594,6 +668,7 @@ class EntityTests : DatabaseTestsBase() {
             }
 
             newTransaction {
+                repetitionAttempts = 1
                 assertEquals("bar", Humans.selectAll().single()[Humans.h])
             }
         }
@@ -660,8 +735,10 @@ class EntityTests : DatabaseTestsBase() {
 
         override fun hashCode(): Int = id.hashCode()
     }
+
     class Student(id: EntityID<Long>) : ComparableLongEntity<Student>(id) {
         companion object : LongEntityClass<Student>(Students)
+
         var name by Students.name
         var school by School referencedOn Students.school
         val notes by Note.referrersOn(Notes.student, true)
@@ -671,18 +748,21 @@ class EntityTests : DatabaseTestsBase() {
 
     class StudentBio(id: EntityID<Long>) : ComparableLongEntity<StudentBio>(id) {
         companion object : LongEntityClass<StudentBio>(StudentBios)
+
         var student by Student.referencedOn(StudentBios.student)
         var dateOfBirth by StudentBios.dateOfBirth
     }
 
     class Note(id: EntityID<Long>) : ComparableLongEntity<Note>(id) {
         companion object : LongEntityClass<Note>(Notes)
+
         var text by Notes.text
         var student by Student referencedOn Notes.student
     }
 
     class Detention(id: EntityID<Long>) : ComparableLongEntity<Detention>(id) {
         companion object : LongEntityClass<Detention>(Detentions)
+
         var reason by Detentions.reason
         var student by Student optionalReferencedOn Detentions.student
     }
@@ -704,10 +784,9 @@ class EntityTests : DatabaseTestsBase() {
         var holidays by Holiday via SchoolHolidays
     }
 
-    @Test fun preloadReferencesOnASizedIterable() {
-
+    @Test
+    fun preloadReferencesOnASizedIterable() {
         withTables(Regions, Schools) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -733,7 +812,7 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
                 School.all().with(School::region)
                 assertNotNull(School.testCache(school1.id))
                 assertNotNull(School.testCache(school2.id))
@@ -746,10 +825,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadReferencesOnAnEntity() {
-
+    @Test
+    fun preloadReferencesOnAnEntity() {
         withTables(Regions, Schools) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -761,7 +839,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 School.find {
                     Schools.id eq school1.id
                 }.first().load(School::region)
@@ -778,9 +857,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadOptionalReferencesOnASizedIterable() {
+    @Test
+    fun preloadOptionalReferencesOnASizedIterable() {
         withTables(Regions, Schools) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -793,6 +872,9 @@ class EntityTests : DatabaseTestsBase() {
                 name = "Eton"
                 region = region1
                 secondaryRegion = region2
+            }.apply {
+                // otherwise Oracle provides school1.id = 0 to testCache(), which returns null
+                if (currentDialectTest is OracleDialect) flush()
             }
 
             val school2 = School.new {
@@ -802,7 +884,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 School.all().with(School::region, School::secondaryRegion)
                 assertNotNull(School.testCache(school1.id))
                 assertNotNull(School.testCache(school2.id))
@@ -814,10 +897,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadOptionalReferencesOnAnEntity() {
-
+    @Test
+    fun preloadOptionalReferencesOnAnEntity() {
         withTables(Regions, Schools) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -833,7 +915,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 val school2 = School.find {
                     Schools.id eq school1.id
                 }.first().load(School::secondaryRegion)
@@ -844,10 +927,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadReferrersOnASizedIterable() {
-
+    @Test
+    fun preloadReferrersOnASizedIterable() {
         withTables(Regions, Schools, Students) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -893,7 +975,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 val cache = TransactionManager.current().entityCache
 
                 School.all().with(School::students)
@@ -905,9 +988,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadReferrersOnAnEntity() {
+    @Test
+    fun preloadReferrersOnAnEntity() {
         withTables(Regions, Schools, Students) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -934,7 +1017,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 val cache = TransactionManager.current().entityCache
 
                 School.find { Schools.id eq school1.id }.first().load(School::students)
@@ -944,10 +1028,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadOptionalReferrersOnASizedIterable() {
-
+    @Test
+    fun preloadOptionalReferrersOnASizedIterable() {
         withTables(Regions, Schools, Students, Detentions) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -979,7 +1062,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 School.all().with(School::students, Student::detentions)
                 val cache = TransactionManager.current().entityCache
 
@@ -992,10 +1076,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadInnerTableLinkOnASizedIterable() {
-
+    @Test
+    fun preloadInnerTableLinkOnASizedIterable() {
         withTables(Regions, Schools, Holidays, SchoolHolidays) {
-
             val now = System.currentTimeMillis()
             val now10 = now + 10
 
@@ -1042,7 +1125,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 School.all().with(School::holidays)
                 val cache = TransactionManager.current().entityCache
 
@@ -1053,9 +1137,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadInnerTableLinkOnAnEntity() {
+    @Test
+    fun preloadInnerTableLinkOnAnEntity() {
         withTables(Regions, Schools, Holidays, SchoolHolidays) {
-
             val now = System.currentTimeMillis()
             val now10 = now + 10
 
@@ -1112,10 +1196,9 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadRelationAtDepth() {
-
+    @Test
+    fun preloadRelationAtDepth() {
         withTables(Regions, Schools, Holidays, SchoolHolidays, Students, Notes) {
-
             val region1 = Region.new {
                 name = "United Kingdom"
             }
@@ -1156,8 +1239,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadBackReferrenceOnASizedIterable() {
-
+    @Test
+    fun preloadBackReferrenceOnASizedIterable() {
         withTables(Regions, Schools, Students, StudentBios) {
             val region1 = Region.new {
                 name = "United States"
@@ -1190,7 +1273,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 Student.all().with(Student::bio)
                 val cache = TransactionManager.current().entityCache
 
@@ -1200,8 +1284,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun preloadBackReferrenceOnAnEntity() {
-
+    @Test
+    fun preloadBackReferrenceOnAnEntity() {
         withTables(Regions, Schools, Students, StudentBios) {
             val region1 = Region.new {
                 name = "United States"
@@ -1234,7 +1318,8 @@ class EntityTests : DatabaseTestsBase() {
 
             commit()
 
-            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE, 1) {
+            inTopLevelTransaction(Connection.TRANSACTION_SERIALIZABLE) {
+                repetitionAttempts = 1
                 Student.all().first().load(Student::bio)
                 val cache = TransactionManager.current().entityCache
 
@@ -1243,7 +1328,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun `test reference cache doesn't fully invalidated on set entity reference`() {
+    @Test
+    fun `test reference cache doesn't fully invalidated on set entity reference`() {
         withTables(Regions, Schools, Students, StudentBios) {
             val region1 = Region.new {
                 name = "United States"
@@ -1274,7 +1360,8 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun `test nested entity initialization`() {
+    @Test
+    fun `test nested entity initialization`() {
         withTables(Posts, Categories, Boards) {
             val post = Post.new {
                 parent = Post.new {
@@ -1299,13 +1386,15 @@ class EntityTests : DatabaseTestsBase() {
         }
     }
 
-    @Test fun `test explicit entity constructor`() {
+    @Test
+    fun `test explicit entity constructor`() {
         var createBoardCalled = false
         fun createBoard(id: EntityID<Int>): Board {
             createBoardCalled = true
             return Board(id)
         }
-        val boardEntityClass = object : IntEntityClass<Board>(Boards, entityCtor = ::createBoard) { }
+
+        val boardEntityClass = object : IntEntityClass<Board>(Boards, entityCtor = ::createBoard) {}
 
         withTables(Boards) {
             val board = boardEntityClass.new {
@@ -1314,9 +1403,236 @@ class EntityTests : DatabaseTestsBase() {
 
             assertEquals("Test Board", board.name)
             assertTrue(
-                createBoardCalled,
-                "Expected createBoardCalled to be called"
+                createBoardCalled, "Expected createBoardCalled to be called"
             )
+        }
+    }
+
+    object RequestsTable : IdTable<String>() {
+        val requestId: Column<String> = varchar("requestId", 256)
+        override val primaryKey = PrimaryKey(requestId)
+        override val id: Column<EntityID<String>> = requestId.entityId()
+    }
+
+    class Request(id: EntityID<String>) : Entity<String>(id) {
+        companion object : EntityClass<String, Request>(RequestsTable)
+
+        var requestId by RequestsTable.requestId
+    }
+
+    @Test
+    fun testSelectFromStringIdTableWithPrimaryKeyByColumn() {
+        withTables(RequestsTable) {
+            Request.new {
+                requestId = "123"
+            }
+
+            val count = Request.all().count()
+            assertEquals(1, count)
+        }
+    }
+
+    object CreditCards : IntIdTable("CreditCards") {
+        val number = varchar("number", 16)
+        val spendingLimit = ulong("spendingLimit").databaseGenerated()
+    }
+
+    class CreditCard(id: EntityID<Int>) : IntEntity(id) {
+        companion object : IntEntityClass<CreditCard>(CreditCards)
+
+        var number by CreditCards.number
+        var spendingLimit by CreditCards.spendingLimit
+    }
+
+    @Test
+    fun testDatabaseGeneratedValues() {
+        withTables(excludeSettings = listOf(TestDB.SQLITE), CreditCards) { testDb ->
+            when (testDb) {
+                TestDB.POSTGRESQL, TestDB.POSTGRESQLNG -> {
+                    // The value can also be set using a SQL trigger
+                    exec(
+                        """
+                        CREATE OR REPLACE FUNCTION set_spending_limit()
+                          RETURNS TRIGGER
+                          LANGUAGE PLPGSQL
+                          AS
+                        $$
+                        BEGIN
+                            NEW."spendingLimit" := 10000;
+                            RETURN NEW;
+                        END;
+                        $$;
+                        """.trimIndent()
+                    )
+                    exec(
+                        """
+                        CREATE TRIGGER set_spending_limit
+                        BEFORE INSERT
+                        ON CreditCards
+                        FOR EACH ROW
+                        EXECUTE PROCEDURE set_spending_limit();
+                        """.trimIndent()
+                    )
+                }
+                else -> {
+                    // This table is only used to get the statement that adds the DEFAULT value, and use it with exec
+                    val creditCards2 = object : IntIdTable("CreditCards") {
+                        val spendingLimit = ulong("spendingLimit").default(10000uL)
+                    }
+                    val missingStatements = SchemaUtils.addMissingColumnsStatements(creditCards2)
+                    missingStatements.forEach {
+                        exec(it)
+                    }
+                }
+            }
+
+            val creditCardId = CreditCards.insertAndGetId {
+                it[number] = "0000111122223333"
+            }.value
+            assertEquals(
+                10000uL,
+                CreditCards.select { CreditCards.id eq creditCardId }.single()[CreditCards.spendingLimit]
+            )
+
+            val creditCard = CreditCard.new {
+                number = "0000111122223333"
+            }.apply {
+                flush()
+            }
+            assertEquals(10000uL, creditCard.spendingLimit)
+        }
+    }
+
+    object Countries : IdTable<String>("Countries") {
+        override val id = varchar("id", 3).uniqueIndex().entityId()
+        var name = text("name")
+    }
+
+    class Country(id: EntityID<String>) : Entity<String>(id) {
+        var name by Countries.name
+        val dishes by Dish referrersOn Dishes.country
+
+        companion object : EntityClass<String, Country>(Countries)
+    }
+
+    object Dishes : IntIdTable("Dishes") {
+        var name = text("name")
+        val country = reference("country_id", Countries)
+    }
+
+    class Dish(id: EntityID<Int>) : IntEntity(id) {
+        var name by Dishes.name
+        var country by Country referencedOn Dishes.country
+
+        companion object : IntEntityClass<Dish>(Dishes)
+    }
+
+    @Test
+    fun testEagerLoadingWithStringParentId() {
+        withDb { testDb ->
+            val db = testDb.connect {
+                keepLoadedReferencesOutOfTransaction = true
+            }
+            transaction(db) {
+                try {
+                    SchemaUtils.drop(Dishes, Countries)
+                    SchemaUtils.create(Countries, Dishes)
+
+                    val lebanonId = Countries.insertAndGetId {
+                        it[id] = "LB"
+                        it[name] = "Lebanon"
+                    }
+                    val lebanon = Country.findById(lebanonId)!!
+
+                    Dish.new {
+                        name = "Kebbeh"
+                        country = lebanon
+                    }
+
+                    Dish.new {
+                        name = "Mjaddara"
+                        country = lebanon
+                    }
+
+                    Dish.new {
+                        name = "Fatteh"
+                        country = lebanon
+                    }
+
+                    Country.all().with(Country::dishes)
+                } finally {
+                    SchemaUtils.drop(Dishes, Countries)
+                }
+            }
+        }
+    }
+
+    object Customers : IntIdTable("Customers") {
+        val emailAddress = varchar("emailAddress", 30).uniqueIndex()
+        val fullName = text("fullName")
+    }
+
+    class Customer(id: EntityID<Int>) : IntEntity(id) {
+        var emailAddress by Customers.emailAddress
+        var name by Customers.fullName
+
+        val orders by Order referrersOn Orders.customer
+
+        companion object : IntEntityClass<Customer>(Customers)
+    }
+
+    object Orders : IntIdTable("Orders") {
+        var orderName = text("orderName")
+        val customer = reference("customer", Customers.emailAddress)
+    }
+
+    class Order(id: EntityID<Int>) : IntEntity(id) {
+        var name by Orders.orderName
+        var customer by Customer referencedOn Orders.customer
+
+        companion object : IntEntityClass<Order>(Orders)
+    }
+
+    /**
+     * This test is for the case when a child references a parent but not using the parent's id column, but rather
+     * another column that is a unique index.
+     */
+    @Test
+    fun testEagerLoadingWithReferenceDifferentFromParentId() {
+        withDb { testDb ->
+            val db = testDb.connect {
+                keepLoadedReferencesOutOfTransaction = true
+            }
+            transaction(db) {
+                try {
+                    SchemaUtils.drop(Orders, Customers)
+                    SchemaUtils.create(Customers, Orders)
+
+                    val customer1 = Customer.new {
+                        emailAddress = "customer1@testing.com"
+                        name = "Customer1"
+                    }
+
+                    val order1 = Order.new {
+                        name = "Order1"
+                        customer = customer1
+                    }
+
+                    val order2 = Order.new {
+                        name = "Order2"
+                        customer = customer1
+                    }
+
+                    Customer.all().with(Customer::orders)
+
+                    val cache = this.entityCache
+
+                    assertEquals(true, cache.getReferrers<Order>(customer1.id, Orders.customer)?.contains(order1))
+                    assertEquals(true, cache.getReferrers<Order>(customer1.id, Orders.customer)?.contains(order2))
+                } finally {
+                    SchemaUtils.drop(Orders, Customers)
+                }
+            }
         }
     }
 }

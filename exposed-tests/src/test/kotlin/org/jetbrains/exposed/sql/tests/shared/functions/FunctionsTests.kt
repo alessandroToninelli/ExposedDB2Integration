@@ -4,7 +4,6 @@ import org.jetbrains.exposed.crypt.Algorithms
 import org.jetbrains.exposed.crypt.Encryptor
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.Function
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.concat
 import org.jetbrains.exposed.sql.tests.DatabaseTestsBase
 import org.jetbrains.exposed.sql.tests.TestDB
@@ -13,13 +12,11 @@ import org.jetbrains.exposed.sql.tests.shared.assertEqualCollections
 import org.jetbrains.exposed.sql.tests.shared.assertEquals
 import org.jetbrains.exposed.sql.tests.shared.dml.DMLTestsData
 import org.jetbrains.exposed.sql.tests.shared.dml.withCitiesAndUsers
-import org.jetbrains.exposed.sql.vendors.H2Dialect
-import org.jetbrains.exposed.sql.vendors.OracleDialect
-import org.jetbrains.exposed.sql.vendors.SQLServerDialect
-import org.jetbrains.exposed.sql.vendors.h2Mode
+import org.jetbrains.exposed.sql.vendors.*
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class FunctionsTests : DatabaseTestsBase() {
 
@@ -126,7 +123,8 @@ class FunctionsTests : DatabaseTestsBase() {
     fun testBitwiseAnd1() {
         withCitiesAndUsers { _, users, _ ->
             // SQLServer and Oracle don't support = on bit values
-            val doesntSupportBitwiseEQ = currentDialectTest is SQLServerDialect || currentDialectTest is OracleDialect || currentDialectTest.h2Mode == H2Dialect.H2CompatibilityMode.Oracle
+            val doesntSupportBitwiseEQ =
+                currentDialectTest is SQLServerDialect || currentDialectTest is OracleDialect || currentDialectTest.h2Mode == H2Dialect.H2CompatibilityMode.Oracle
             val adminFlag = DMLTestsData.Users.Flags.IS_ADMIN
             val adminAndFlagsExpr = Expression.build { (users.flags bitwiseAnd adminFlag) }
             val adminEq = Expression.build { adminAndFlagsExpr eq adminFlag }
@@ -259,20 +257,46 @@ class FunctionsTests : DatabaseTestsBase() {
     }
 
     @Test
-    fun testLengthWithCount01() {
-        class LengthFunction<T : ExpressionWithColumnType<String>>(val exp: T) : Function<Int>(IntegerColumnType()) {
-            override fun toQueryBuilder(queryBuilder: QueryBuilder) = queryBuilder {
-                if (currentDialectTest is SQLServerDialect) append("LEN(", exp, ')')
-                else append("LENGTH(", exp, ')')
-            }
-        }
+    fun testCharLengthWithSum() {
         withCitiesAndUsers { cities, _, _ ->
-            val sumOfLength = LengthFunction(cities.name).sum()
+            val sumOfLength = CharLength(cities.name).sum()
             val expectedValue = cities.selectAll().sumOf { it[cities.name].length }
 
             val results = cities.slice(sumOfLength).selectAll().toList()
             assertEquals(1, results.size)
             assertEquals(expectedValue, results.single()[sumOfLength])
+        }
+    }
+
+    @Test
+    fun testCharLengthWithEdgeCaseStrings() {
+        val testTable = object : Table("test_table") {
+            val nullString = varchar("null_string", 32).nullable()
+            val emptyString = varchar("empty_string", 32).nullable()
+        }
+
+        withTables(testTable) {
+            testTable.insert {
+                it[nullString] = null
+                it[emptyString] = ""
+            }
+            val helloWorld = "こんにちは世界" // each character is a 3-byte character
+
+            val nullLength = testTable.nullString.charLength()
+            val emptyLength = testTable.emptyString.charLength()
+            val multiByteLength = CharLength(stringLiteral(helloWorld))
+
+            // Oracle treats empty strings as null
+            val isOracleDialect = currentDialectTest is OracleDialect ||
+                currentDialectTest.h2Mode == H2Dialect.H2CompatibilityMode.Oracle
+            val expectedEmpty = if (isOracleDialect) null else 0
+            // char_length should return single-character count, not total byte count
+            val expectedMultibyte = helloWorld.length
+
+            val result = testTable.slice(nullLength, emptyLength, multiByteLength).selectAll().single()
+            assertNull(result[nullLength])
+            assertEquals(expectedEmpty, result[emptyLength])
+            assertEquals(expectedMultibyte, result[multiByteLength])
         }
     }
 
@@ -298,6 +322,44 @@ class FunctionsTests : DatabaseTestsBase() {
 
             val ucase = DMLTestsData.Cities.name.upperCase()
             assert(cities.slice(ucase).selectAll().any { it[ucase] == "PRAGUE" })
+        }
+    }
+
+    @Test
+    fun testLocate() {
+        withCitiesAndUsers { cities, _, _ ->
+            val locate = cities.name.locate("e")
+            val results = cities.slice(locate).selectAll().toList()
+
+            assertEquals(6, results[0][locate]) // St. Petersburg
+            assertEquals(0, results[1][locate]) // Munich
+            assertEquals(6, results[2][locate]) // Prague
+        }
+    }
+
+    @Test
+    fun testLocate02() {
+        withCitiesAndUsers { cities, _, _ ->
+            val locate = cities.name.locate("Peter")
+            val results = cities.slice(locate).selectAll().toList()
+
+            assertEquals(5, results[0][locate]) // St. Petersburg
+            assertEquals(0, results[1][locate]) // Munich
+            assertEquals(0, results[2][locate]) // Prague
+        }
+    }
+
+    @Test
+    fun testLocate03() {
+        withCitiesAndUsers { cities, _, _ ->
+            val isNotCaseSensitiveDialect = currentDialectTest is MysqlDialect || currentDialectTest is SQLServerDialect
+
+            val locate = cities.name.locate("p")
+            val results = cities.slice(locate).selectAll().toList()
+
+            assertEquals(if (isNotCaseSensitiveDialect) 5 else 0, results[0][locate]) // St. Petersburg
+            assertEquals(0, results[1][locate]) // Munich
+            assertEquals(if (isNotCaseSensitiveDialect) 1 else 0, results[2][locate]) // Prague
         }
     }
 

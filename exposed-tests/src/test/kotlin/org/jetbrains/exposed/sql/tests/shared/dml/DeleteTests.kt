@@ -16,7 +16,13 @@ import org.junit.Test
 
 class DeleteTests : DatabaseTestsBase() {
     private val notSupportLimit by lazy {
-        val exclude = arrayListOf(TestDB.POSTGRESQL, TestDB.POSTGRESQLNG, TestDB.ORACLE, TestDB.H2_PSQL, TestDB.H2_ORACLE)
+        val exclude = arrayListOf(
+            TestDB.POSTGRESQL,
+            TestDB.POSTGRESQLNG,
+            TestDB.ORACLE,
+            TestDB.H2_PSQL,
+            TestDB.H2_ORACLE
+        )
         if (!SQLiteDialect.ENABLE_UPDATE_DELETE_LIMIT) {
             exclude.add(TestDB.SQLITE)
         }
@@ -71,7 +77,7 @@ class DeleteTests : DatabaseTestsBase() {
 
     @Test
     fun testDeleteWithLimit02() {
-        val dialects = TestDB.values().toList() - notSupportLimit
+        val dialects = TestDB.entries - notSupportLimit
         withCitiesAndUsers(dialects) { _, _, userData ->
             expectException<UnsupportedByDialectException> {
                 userData.deleteWhere(limit = 1) {
